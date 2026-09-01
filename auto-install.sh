@@ -98,6 +98,25 @@ if [ -z "$LOCAL_IP" ]; then
     LOCAL_IP="127.0.0.1"
 fi
 
+# Helper an toàn đọc dữ liệu từ Terminal TTY (chống nuốt script khi chạy curl ... | bash)
+read_input() {
+    local prompt_msg="$1"
+    local default_val="$2"
+    local var_name="$3"
+    local user_val=""
+
+    if [ -e /dev/tty ]; then
+        read -r -p "$prompt_msg" user_val < /dev/tty || true
+    else
+        read -r -p "$prompt_msg" user_val || true
+    fi
+
+    if [ -z "$user_val" ]; then
+        user_val="$default_val"
+    fi
+    eval "$var_name=\"\$user_val\""
+}
+
 # 3. Thu thập thông tin cấu hình (Interactive Configuration)
 echo -e "\n${CYAN}[*] Bước 2/7: Thiết lập tham số cấu hình hệ thống${NC}"
 echo -e "    -> Đang quét dải cổng 9000 - 9999 để tìm cổng khả dụng tối ưu..."
@@ -107,8 +126,7 @@ echo -e "${YELLOW}(Nhấn Enter để tự động sử dụng giá trị gợi 
 
 # Vòng lặp nhập cổng và kiểm tra xung đột
 while true; do
-    read -p "1. Cổng Web Gateway PAM-CPG [Gợi ý: ${SUGGESTED_PORT}]: " INPUT_WEB_PORT
-    WEB_PORT=${INPUT_WEB_PORT:-$SUGGESTED_PORT}
+    read_input "1. Cổng Web Gateway PAM-CPG [Gợi ý: ${SUGGESTED_PORT}]: " "${SUGGESTED_PORT}" WEB_PORT
 
     # Kiểm tra tính hợp lệ (phải là số nguyên từ 1 đến 65535)
     if ! [[ "$WEB_PORT" =~ ^[0-9]+$ ]] || [ "$WEB_PORT" -lt 1 ] || [ "$WEB_PORT" -gt 65535 ]; then
@@ -126,11 +144,9 @@ while true; do
     fi
 done
 
-read -p "2. Tên miền Domain sử dụng (nếu có, VD: pam.company.vn) [Mặc định: ${LOCAL_IP}]: " INPUT_DOMAIN
-DOMAIN=${INPUT_DOMAIN:-$LOCAL_IP}
+read_input "2. Tên miền Domain sử dụng (nếu có, VD: pam.company.vn) [Mặc định: ${LOCAL_IP}]: " "${LOCAL_IP}" DOMAIN
 
-read -p "3. Tự động cài đặt và cấu hình MariaDB Server cục bộ? (Y/n) [Mặc định: Y]: " INPUT_INSTALL_DB
-INSTALL_DB=${INPUT_INSTALL_DB:-"Y"}
+read_input "3. Tự động cài đặt và cấu hình MariaDB Server cục bộ? (Y/n) [Mặc định: Y]: " "Y" INSTALL_DB
 
 if [[ "$INSTALL_DB" =~ ^[Yy]$ ]]; then
     DB_NAME="${DEFAULT_DB_NAME}"
@@ -140,19 +156,11 @@ if [[ "$INSTALL_DB" =~ ^[Yy]$ ]]; then
     DB_HOST="127.0.0.1"
     DB_PORT="3306"
 else
-    read -p "4. Địa chỉ máy chủ CSDL (Host) [Mặc định: 127.0.0.1]: " INPUT_DB_HOST
-    DB_HOST=${INPUT_DB_HOST:-$DEFAULT_DB_HOST}
-
-    read -p "5. Cổng CSDL (Port) [Mặc định: 3306]: " INPUT_DB_PORT
-    DB_PORT=${INPUT_DB_PORT:-$DEFAULT_DB_PORT}
-
-    read -p "6. Tên Cơ sở dữ liệu [Mặc định: ${DEFAULT_DB_NAME}]: " INPUT_DB_NAME
-    DB_NAME=${INPUT_DB_NAME:-$DEFAULT_DB_NAME}
-
-    read -p "7. Tên Người dùng Database [Mặc định: ${DEFAULT_DB_USER}]: " INPUT_DB_USER
-    DB_USER=${INPUT_DB_USER:-$DEFAULT_DB_USER}
-
-    read -p "8. Mật khẩu Database: " DB_PASS
+    read_input "4. Địa chỉ máy chủ CSDL (Host) [Mặc định: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
+    read_input "5. Cổng CSDL (Port) [Mặc định: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
+    read_input "6. Tên Cơ sở dữ liệu [Mặc định: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
+    read_input "7. Tên Người dùng Database [Mặc định: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
+    read_input "8. Mật khẩu Database: " "" DB_PASS
     MARIADB_ROOT_PASS="[N/A - Database Ngoại Vi]"
 fi
 
@@ -260,16 +268,20 @@ chmod 600 "${INSTALL_DIR}/.env"
 
 # 8. Chạy chế độ Setup của pam-cpg để khởi tạo CSDL, MFA Secret, Recovery Code và 3 mảnh Shamir Master Key
 echo -e "\n${CYAN}[*] Bước 7/7: Khởi tạo hệ thống bảo mật (Admin, MFA TOTP & 3 Mảnh Khóa Shamir Master Key)...${NC}"
-SETUP_OUTPUT=$("${INSTALL_DIR}/bin/pam-cpg" --setup --db "${DB_DSN}" 2>/dev/null)
+SETUP_OUTPUT=$("${INSTALL_DIR}/bin/pam-cpg" --setup --db "${DB_DSN}" 2>/dev/null || true)
+CLEAN_JSON=$(echo "$SETUP_OUTPUT" | sed -n '/{/,/}/p')
+if [ -z "$CLEAN_JSON" ] || ! echo "$CLEAN_JSON" | jq . >/dev/null 2>&1; then
+    CLEAN_JSON="{}"
+fi
 
-ADMIN_USER=$(echo "$SETUP_OUTPUT" | jq -r '.admin_user // "admin"')
-ADMIN_PASS=$(echo "$SETUP_OUTPUT" | jq -r '.admin_pass // "Admin@12345"')
-MFA_SECRET=$(echo "$SETUP_OUTPUT" | jq -r '.mfa_secret // "Chưa khởi tạo"')
-MFA_RECOVERY=$(echo "$SETUP_OUTPUT" | jq -r '.mfa_recovery_code // "Chưa khởi tạo"')
-SHARE_1=$(echo "$SETUP_OUTPUT" | jq -r '.shamir_shares[0] // ""')
-SHARE_2=$(echo "$SETUP_OUTPUT" | jq -r '.shamir_shares[1] // ""')
-SHARE_3=$(echo "$SETUP_OUTPUT" | jq -r '.shamir_shares[2] // ""')
-RAW_KEY=$(echo "$SETUP_OUTPUT" | jq -r '.master_key_raw // ""')
+ADMIN_USER=$(echo "$CLEAN_JSON" | jq -r '.admin_user // "admin"' 2>/dev/null || echo "admin")
+ADMIN_PASS=$(echo "$CLEAN_JSON" | jq -r '.admin_pass // "Admin@12345"' 2>/dev/null || echo "Admin@12345")
+MFA_SECRET=$(echo "$CLEAN_JSON" | jq -r '.mfa_secret // "Chưa khởi tạo"' 2>/dev/null || echo "Chưa khởi tạo")
+MFA_RECOVERY=$(echo "$CLEAN_JSON" | jq -r '.mfa_recovery_code // "Chưa khởi tạo"' 2>/dev/null || echo "Chưa khởi tạo")
+SHARE_1=$(echo "$CLEAN_JSON" | jq -r '.shamir_shares[0] // ""' 2>/dev/null || echo "")
+SHARE_2=$(echo "$CLEAN_JSON" | jq -r '.shamir_shares[1] // ""' 2>/dev/null || echo "")
+SHARE_3=$(echo "$CLEAN_JSON" | jq -r '.shamir_shares[2] // ""' 2>/dev/null || echo "")
+RAW_KEY=$(echo "$CLEAN_JSON" | jq -r '.master_key_raw // ""' 2>/dev/null || echo "")
 
 # Lưu các khóa bí mật vào file bàn giao an toàn
 cat <<EOF > "${INSTALL_DIR}/CREDENTIALS.txt"
