@@ -25,6 +25,42 @@ DEFAULT_DB_PORT="3306"
 DEFAULT_DB_HOST="127.0.0.1"
 GITHUB_REPO="cuongnguyen955/pam-cpg"
 
+# Hàm kiểm tra xem port có đang bị ứng dụng khác chiếm dụng không
+is_port_in_use() {
+    local port="$1"
+    if command -v ss >/dev/null 2>&1; then
+        if ss -tuln 2>/dev/null | grep -qE "(:|\])${port}\b"; then
+            return 0
+        fi
+    elif command -v netstat >/dev/null 2>&1; then
+        if netstat -tuln 2>/dev/null | grep -qE ":${port}\b"; then
+            return 0
+        fi
+    elif command -v lsof >/dev/null 2>&1; then
+        if lsof -iTCP:${port} -sTCP:LISTEN >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+    if (timeout 1 bash -c "echo > /dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
+# Hàm tự động quét tìm cổng trống đầu tiên trong dải cổng chỉ định
+find_free_port_in_range() {
+    local start_port=${1:-9000}
+    local end_port=${2:-9999}
+    local port
+    for ((port=start_port; port<=end_port; port++)); do
+        if ! is_port_in_use "$port"; then
+            echo "$port"
+            return 0
+        fi
+    done
+    echo "9000"
+}
+
 # Hàm sinh chuỗi ngẫu nhiên an toàn
 generate_random_password() {
     openssl rand -base64 16 | tr -dc 'a-zA-Z0-9!@#$%^&*' | head -c 16
@@ -64,10 +100,31 @@ fi
 
 # 3. Thu thập thông tin cấu hình (Interactive Configuration)
 echo -e "\n${CYAN}[*] Bước 2/7: Thiết lập tham số cấu hình hệ thống${NC}"
-echo -e "${YELLOW}(Nhấn Enter để tự động sử dụng giá trị mặc định tối ưu)${NC}\n"
+echo -e "    -> Đang quét dải cổng 9000 - 9999 để tìm cổng khả dụng tối ưu..."
+SUGGESTED_PORT=$(find_free_port_in_range 9000 9999)
+echo -e "    -> Cổng trống khả dụng gợi ý: ${GREEN}${BOLD}${SUGGESTED_PORT}${NC}"
+echo -e "${YELLOW}(Nhấn Enter để tự động sử dụng giá trị gợi ý hoặc nhập cổng theo nhu cầu)${NC}\n"
 
-read -p "1. Cổng Web Gateway PAM-CPG [Mặc định: ${DEFAULT_WEB_PORT}]: " INPUT_WEB_PORT
-WEB_PORT=${INPUT_WEB_PORT:-$DEFAULT_WEB_PORT}
+# Vòng lặp nhập cổng và kiểm tra xung đột
+while true; do
+    read -p "1. Cổng Web Gateway PAM-CPG [Gợi ý: ${SUGGESTED_PORT}]: " INPUT_WEB_PORT
+    WEB_PORT=${INPUT_WEB_PORT:-$SUGGESTED_PORT}
+
+    # Kiểm tra tính hợp lệ (phải là số nguyên từ 1 đến 65535)
+    if ! [[ "$WEB_PORT" =~ ^[0-9]+$ ]] || [ "$WEB_PORT" -lt 1 ] || [ "$WEB_PORT" -gt 65535 ]; then
+        echo -e "    ${RED}[!] Lỗi: Cổng phải là số nguyên trong khoảng 1 - 65535. Vui lòng nhập lại!${NC}"
+        continue
+    fi
+
+    # Kiểm tra cổng có bị chiếm dụng không
+    if is_port_in_use "$WEB_PORT"; then
+        echo -e "    ${RED}[!] Cảnh báo: Cổng ${WEB_PORT} hiện đang bị chiếm dụng bởi ứng dụng khác trên máy chủ!${NC}"
+        echo -e "    ${YELLOW}    -> Bạn có thể nhấn Enter để dùng cổng gợi ý [${SUGGESTED_PORT}] hoặc nhập cổng khác.${NC}"
+    else
+        echo -e "    ${GREEN}✔ Cổng ${WEB_PORT} hợp lệ và sẵn sàng sử dụng.${NC}"
+        break
+    fi
+done
 
 read -p "2. Tên miền Domain sử dụng (nếu có, VD: pam.company.vn) [Mặc định: ${LOCAL_IP}]: " INPUT_DOMAIN
 DOMAIN=${INPUT_DOMAIN:-$LOCAL_IP}
