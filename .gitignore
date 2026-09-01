@@ -1,0 +1,6 @@
+# Compiled Binaries & Logs
+*.log
+shared/
+certs/
+.env
+CREDENTIALS.txt
