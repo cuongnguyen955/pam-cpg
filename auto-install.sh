@@ -146,22 +146,68 @@ done
 
 read_input "2. Tên miền Domain sử dụng (nếu có, VD: pam.company.vn) [Mặc định: ${LOCAL_IP}]: " "${LOCAL_IP}" DOMAIN
 
-read_input "3. Tự động cài đặt và cấu hình MariaDB Server cục bộ? (Y/n) [Mặc định: Y]: " "Y" INSTALL_DB
+# Phát hiện dịch vụ MariaDB / MySQL hiện có trên hệ thống
+HAS_EXISTING_DB=false
+if is_port_in_use 3306 || pgrep -f "mariadbd|mysqld" >/dev/null 2>&1 || systemctl is-active mariadb >/dev/null 2>&1 || systemctl is-active mysql >/dev/null 2>&1; then
+    HAS_EXISTING_DB=true
+fi
 
-if [[ "$INSTALL_DB" =~ ^[Yy]$ ]]; then
-    DB_NAME="${DEFAULT_DB_NAME}"
-    DB_USER="${DEFAULT_DB_USER}"
-    DB_PASS="$(generate_random_password)"
-    MARIADB_ROOT_PASS="$(generate_random_password)"
-    DB_HOST="127.0.0.1"
-    DB_PORT="3306"
+AUTO_PROVISION_DB=false
+INSTALL_DB_PACKAGE=false
+ADMIN_DB_USER="root"
+ADMIN_DB_PASS=""
+
+if [ "$HAS_EXISTING_DB" = true ]; then
+    echo -e "\n    ${YELLOW}⚡ Phát hiện: Máy chủ ĐÃ CÓ sẵn dịch vụ MariaDB / MySQL đang hoạt động.${NC}"
+    echo -e "    Vui lòng chọn phương thức thiết lập Cơ sở dữ liệu cho PAM-CPG:"
+    echo -e "      [1] Cung cấp tài khoản Quản trị (Root/Admin) để Script tự động tạo Database & cấp quyền User (Khuyến nghị)."
+    echo -e "      [2] Bạn tự cung cấp Database & User đã tạo sẵn từ trước cho PAM-CPG."
+    read_input "    -> Nhập lựa chọn [1/2] [Mặc định: 1]: " "1" DB_CHOICE
+
+    if [ "$DB_CHOICE" = "1" ]; then
+        read_input "    • Tài khoản Quản trị DB [Mặc định: root]: " "root" ADMIN_DB_USER
+        read_input "    • Mật khẩu Quản trị DB (Để trống nếu dùng unix_socket không mật khẩu): " "" ADMIN_DB_PASS
+        read_input "    • Tên Database muốn tạo [Mặc định: ${DEFAULT_DB_NAME}]: " "${DEFAULT_DB_NAME}" DB_NAME
+        read_input "    • Tên User Database muốn tạo [Mặc định: ${DEFAULT_DB_USER}]: " "${DEFAULT_DB_USER}" DB_USER
+        DB_PASS="$(generate_random_password)"
+        MARIADB_ROOT_PASS="${ADMIN_DB_PASS}"
+        DB_HOST="127.0.0.1"
+        DB_PORT="3306"
+        AUTO_PROVISION_DB=true
+        INSTALL_DB_PACKAGE=false
+    else
+        read_input "    • Địa chỉ máy chủ CSDL (Host) [Mặc định: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
+        read_input "    • Cổng CSDL (Port) [Mặc định: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
+        read_input "    • Tên Cơ sở dữ liệu đã tạo sẵn [Mặc định: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
+        read_input "    • Tên Người dùng Database [Mặc định: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
+        read_input "    • Mật khẩu Database: " "" DB_PASS
+        MARIADB_ROOT_PASS="[N/A - Database Đã Cấu Hình Sẵn]"
+        AUTO_PROVISION_DB=false
+        INSTALL_DB_PACKAGE=false
+    fi
 else
-    read_input "4. Địa chỉ máy chủ CSDL (Host) [Mặc định: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
-    read_input "5. Cổng CSDL (Port) [Mặc định: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
-    read_input "6. Tên Cơ sở dữ liệu [Mặc định: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
-    read_input "7. Tên Người dùng Database [Mặc định: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
-    read_input "8. Mật khẩu Database: " "" DB_PASS
-    MARIADB_ROOT_PASS="[N/A - Database Ngoại Vi]"
+    echo -e "\n    ${CYAN}⚡ Thông báo: Máy chủ CHƯA CÓ dịch vụ MariaDB / MySQL cục bộ.${NC}"
+    read_input "3. Tự động cài đặt & cấu hình mới MariaDB Server cục bộ? (Y/n) [Mặc định: Y]: " "Y" INSTALL_LOCAL_DB
+
+    if [[ "$INSTALL_LOCAL_DB" =~ ^[Yy]$ ]]; then
+        INSTALL_DB_PACKAGE=true
+        AUTO_PROVISION_DB=true
+        DB_NAME="${DEFAULT_DB_NAME}"
+        DB_USER="${DEFAULT_DB_USER}"
+        DB_PASS="$(generate_random_password)"
+        MARIADB_ROOT_PASS="$(generate_random_password)"
+        DB_HOST="127.0.0.1"
+        DB_PORT="3306"
+    else
+        INSTALL_DB_PACKAGE=false
+        AUTO_PROVISION_DB=false
+        read_input "    • Địa chỉ máy chủ CSDL Ngoại vi (Host) [Mặc định: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
+        read_input "    • Cổng CSDL (Port) [Mặc định: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
+        read_input "    • Tên Cơ sở dữ liệu [Mặc định: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
+        read_input "    • Tên Người dùng Database [Mặc định: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
+        read_input "    • Mật khẩu Database: " "" DB_PASS
+        MARIADB_ROOT_PASS="[N/A - Database Ngoại Vi]"
+    fi
 fi
 
 DB_DSN="${DB_USER}:${DB_PASS}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?charset=utf8mb4&parseTime=True&loc=Local"
@@ -178,27 +224,42 @@ if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
     apt-get update -qq
     apt-get install -y -qq ffmpeg ca-certificates curl openssl tzdata jq >/dev/null 2>&1
 
-    if [[ "$INSTALL_DB" =~ ^[Yy]$ ]]; then
+    if [ "$INSTALL_DB_PACKAGE" = true ]; then
         echo -e "    -> Đang cài đặt MariaDB Server..."
         apt-get install -y -qq mariadb-server mariadb-client >/dev/null 2>&1
         systemctl enable mariadb >/dev/null 2>&1
         systemctl start mariadb >/dev/null 2>&1
+    elif ! command -v mariadb >/dev/null 2>&1 && ! command -v mysql >/dev/null 2>&1; then
+        apt-get install -y -qq mariadb-client >/dev/null 2>&1 || true
     fi
 elif [ "$OS_NAME" = "centos" ] || [ "$OS_NAME" = "rhel" ] || [ "$OS_NAME" = "rocky" ] || [ "$OS_NAME" = "almalinux" ]; then
     yum install -y epel-release >/dev/null 2>&1 || true
     yum install -y ffmpeg ca-certificates curl openssl tzdata jq >/dev/null 2>&1
-    if [[ "$INSTALL_DB" =~ ^[Yy]$ ]]; then
+    if [ "$INSTALL_DB_PACKAGE" = true ]; then
         yum install -y mariadb-server mariadb >/dev/null 2>&1
         systemctl enable mariadb >/dev/null 2>&1
         systemctl start mariadb >/dev/null 2>&1
+    elif ! command -v mariadb >/dev/null 2>&1 && ! command -v mysql >/dev/null 2>&1; then
+        yum install -y mariadb >/dev/null 2>&1 || true
     fi
 fi
 echo -e "    ${GREEN}✔ Đã cài đặt xong các gói phụ thuộc.${NC}"
 
 # 5. Khởi tạo Cơ sở dữ liệu và phân quyền User DB
-if [[ "$INSTALL_DB" =~ ^[Yy]$ ]]; then
+if [ "$AUTO_PROVISION_DB" = true ]; then
     echo -e "\n${CYAN}[*] Bước 4/7: Tự động khởi tạo Database \`${DB_NAME}\` và phân quyền User \`${DB_USER}\`...${NC}"
-    mariadb -u root <<EOF
+    
+    MYSQL_CLI="mariadb"
+    if ! command -v mariadb >/dev/null 2>&1; then
+        MYSQL_CLI="mysql"
+    fi
+
+    MYSQL_AUTH_FLAGS="-u${ADMIN_DB_USER}"
+    if [ -n "$ADMIN_DB_PASS" ]; then
+        MYSQL_AUTH_FLAGS="${MYSQL_AUTH_FLAGS} -p${ADMIN_DB_PASS}"
+    fi
+
+    $MYSQL_CLI $MYSQL_AUTH_FLAGS <<EOF
 CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER IF NOT EXISTS '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${DB_PASS}';
 ALTER USER '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${DB_PASS}';
@@ -209,6 +270,9 @@ GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';
 FLUSH PRIVILEGES;
 EOF
     echo -e "    ${GREEN}✔ Database \`${DB_NAME}\` đã được tạo và thiết lập bảo mật thành công!${NC}"
+else
+    echo -e "\n${CYAN}[*] Bước 4/7: Sử dụng Cơ sở dữ liệu cấu hình sẵn \`${DB_NAME}\`...${NC}"
+    echo -e "    ${GREEN}✔ Ghi nhận CSDL Target: ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}${NC}"
 fi
 
 # 6. Tạo thư mục hệ thống và tải/sao chép file thực thi pam-cpg
@@ -269,7 +333,7 @@ chmod 600 "${INSTALL_DIR}/.env"
 # 8. Chạy chế độ Setup của pam-cpg để khởi tạo CSDL, MFA Secret, Recovery Code và 3 mảnh Shamir Master Key
 echo -e "\n${CYAN}[*] Bước 7/7: Khởi tạo hệ thống bảo mật (Admin, MFA TOTP & 3 Mảnh Khóa Shamir Master Key)...${NC}"
 SETUP_OUTPUT=$("${INSTALL_DIR}/bin/pam-cpg" --setup --db "${DB_DSN}" 2>/dev/null || true)
-CLEAN_JSON=$(echo "$SETUP_OUTPUT" | sed -n '/{/,/}/p')
+CLEAN_JSON=$(echo "$SETUP_OUTPUT" | awk '/^{/{flag=1} flag; /^}/{flag=0}')
 if [ -z "$CLEAN_JSON" ] || ! echo "$CLEAN_JSON" | jq . >/dev/null 2>&1; then
     CLEAN_JSON="{}"
 fi
