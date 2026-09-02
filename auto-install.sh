@@ -31,17 +31,48 @@ is_port_in_use() {
     if command -v ss >/dev/null 2>&1; then
         if ss -tuln 2>/dev/null | grep -qE "(:|\])${port}\b"; then
             return 0
+        else
+            return 1
         fi
     elif command -v netstat >/dev/null 2>&1; then
         if netstat -tuln 2>/dev/null | grep -qE ":${port}\b"; then
             return 0
+        else
+            return 1
         fi
     elif command -v lsof >/dev/null 2>&1; then
         if lsof -iTCP:${port} -sTCP:LISTEN >/dev/null 2>&1; then
             return 0
+        else
+            return 1
         fi
     fi
     if (timeout 1 bash -c "echo > /dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
+# Hàm kiểm tra dịch vụ MariaDB/MySQL cục bộ có đang hoạt động không
+is_local_db_running() {
+    if is_port_in_use 3306; then
+        return 0
+    fi
+    if [ -S /run/mysqld/mysqld.sock ] || [ -S /var/run/mysqld/mysqld.sock ] || [ -S /tmp/mysql.sock ]; then
+        return 0
+    fi
+    if pgrep -f "mariadbd|mysqld" >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
+# Hàm kiểm tra gói MariaDB Server đã được cài đặt trên máy chưa
+is_local_db_installed() {
+    if command -v mariadbd >/dev/null 2>&1 || command -v mysqld >/dev/null 2>&1; then
+        return 0
+    fi
+    if [ -f /usr/sbin/mariadbd ] || [ -f /usr/sbin/mysqld ] || [ -f /usr/libexec/mariadbd ] || [ -f /usr/libexec/mysqld ]; then
         return 0
     fi
     return 1
@@ -148,7 +179,7 @@ read_input "2. Tên miền Domain sử dụng (nếu có, VD: pam.company.vn) [M
 
 # Phát hiện dịch vụ MariaDB / MySQL hiện có trên hệ thống
 HAS_EXISTING_DB=false
-if is_port_in_use 3306 || pgrep -f "mariadbd|mysqld" >/dev/null 2>&1 || systemctl is-active mariadb >/dev/null 2>&1 || systemctl is-active mysql >/dev/null 2>&1; then
+if is_local_db_running || is_local_db_installed; then
     HAS_EXISTING_DB=true
 fi
 
@@ -158,7 +189,7 @@ ADMIN_DB_USER="root"
 ADMIN_DB_PASS=""
 
 if [ "$HAS_EXISTING_DB" = true ]; then
-    echo -e "\n    ${YELLOW}⚡ Phát hiện: Máy chủ ĐÃ CÓ sẵn dịch vụ MariaDB / MySQL đang hoạt động.${NC}"
+    echo -e "\n    ${YELLOW}⚡ Phát hiện: Máy chủ ĐÃ CÓ sẵn dịch vụ MariaDB / MySQL.${NC}"
     echo -e "    Vui lòng chọn phương thức thiết lập Cơ sở dữ liệu cho PAM-CPG:"
     echo -e "      [1] Cung cấp tài khoản Quản trị (Root/Admin) để Script tự động tạo Database & cấp quyền User (Khuyến nghị)."
     echo -e "      [2] Bạn tự cung cấp Database & User đã tạo sẵn từ trước cho PAM-CPG."
@@ -224,7 +255,7 @@ if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
     apt-get update -qq
     apt-get install -y -qq ffmpeg ca-certificates curl openssl tzdata jq >/dev/null 2>&1
 
-    if [ "$INSTALL_DB_PACKAGE" = true ]; then
+    if [ "$INSTALL_DB_PACKAGE" = true ] || ( [ "$AUTO_PROVISION_DB" = true ] && ! is_local_db_installed ); then
         echo -e "    -> Đang cài đặt MariaDB Server..."
         apt-get install -y -qq mariadb-server mariadb-client >/dev/null 2>&1
         systemctl enable mariadb >/dev/null 2>&1
@@ -235,7 +266,7 @@ if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
 elif [ "$OS_NAME" = "centos" ] || [ "$OS_NAME" = "rhel" ] || [ "$OS_NAME" = "rocky" ] || [ "$OS_NAME" = "almalinux" ]; then
     yum install -y epel-release >/dev/null 2>&1 || true
     yum install -y ffmpeg ca-certificates curl openssl tzdata jq >/dev/null 2>&1
-    if [ "$INSTALL_DB_PACKAGE" = true ]; then
+    if [ "$INSTALL_DB_PACKAGE" = true ] || ( [ "$AUTO_PROVISION_DB" = true ] && ! is_local_db_installed ); then
         yum install -y mariadb-server mariadb >/dev/null 2>&1
         systemctl enable mariadb >/dev/null 2>&1
         systemctl start mariadb >/dev/null 2>&1
@@ -249,6 +280,19 @@ echo -e "    ${GREEN}✔ Đã cài đặt xong các gói phụ thuộc.${NC}"
 if [ "$AUTO_PROVISION_DB" = true ]; then
     echo -e "\n${CYAN}[*] Bước 4/7: Tự động khởi tạo Database \`${DB_NAME}\` và phân quyền User \`${DB_USER}\`...${NC}"
     
+    # Đảm bảo MariaDB Server đang chạy và socket sẵn sàng
+    if ! is_local_db_running; then
+        echo -e "    -> Đang khởi động MariaDB Server..."
+        systemctl enable mariadb >/dev/null 2>&1 || systemctl enable mysql >/dev/null 2>&1 || true
+        systemctl start mariadb >/dev/null 2>&1 || systemctl start mysql >/dev/null 2>&1 || true
+        for i in {1..10}; do
+            if is_local_db_running || [ -S /run/mysqld/mysqld.sock ] || [ -S /var/run/mysqld/mysqld.sock ]; then
+                break
+            fi
+            sleep 1
+        done
+    fi
+
     MYSQL_CLI="mariadb"
     if ! command -v mariadb >/dev/null 2>&1; then
         MYSQL_CLI="mysql"
