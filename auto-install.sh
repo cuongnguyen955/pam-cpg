@@ -191,13 +191,29 @@ ADMIN_DB_PASS=""
 if [ "$HAS_EXISTING_DB" = true ]; then
     echo -e "\n    ${YELLOW}⚡ Phát hiện: Máy chủ ĐÃ CÓ sẵn dịch vụ MariaDB / MySQL.${NC}"
     echo -e "    Vui lòng chọn phương thức thiết lập Cơ sở dữ liệu cho PAM-CPG:"
-    echo -e "      [1] Cung cấp tài khoản Quản trị (Root/Admin) để Script tự động tạo Database & cấp quyền User (Khuyến nghị)."
+    echo -e "      [1] Tự động tạo Database \`${DEFAULT_DB_NAME}\` & User cho PAM-CPG (Khuyến nghị)."
     echo -e "      [2] Bạn tự cung cấp Database & User đã tạo sẵn từ trước cho PAM-CPG."
     read_input "    -> Nhập lựa chọn [1/2] [Mặc định: 1]: " "1" DB_CHOICE
 
     if [ "$DB_CHOICE" = "1" ]; then
-        read_input "    • Tài khoản Quản trị DB [Mặc định: root]: " "root" ADMIN_DB_USER
-        read_input "    • Mật khẩu Quản trị DB (Để trống nếu dùng unix_socket không mật khẩu): " "" ADMIN_DB_PASS
+        ADMIN_DB_USER="root"
+        ADMIN_DB_PASS=""
+
+        # Tự động kiểm tra quyền quản trị root qua socket
+        if mariadb -u root -e "SELECT 1;" >/dev/null 2>&1 || mysql -u root -e "SELECT 1;" >/dev/null 2>&1; then
+            echo -e "    ${GREEN}✔ Tự động xác thực quyền Quản trị MariaDB (root) qua socket thành công.${NC}"
+        else
+            while true; do
+                read_input "    • Nhập Mật khẩu tài khoản Quản trị MariaDB (root): " "" ADMIN_DB_PASS
+                if mariadb -u root -p"${ADMIN_DB_PASS}" -e "SELECT 1;" >/dev/null 2>&1 || mysql -u root -p"${ADMIN_DB_PASS}" -e "SELECT 1;" >/dev/null 2>&1; then
+                    echo -e "      ${GREEN}✔ Xác thực mật khẩu root thành công!${NC}"
+                    break
+                else
+                    echo -e "      ${RED}[!] Mật khẩu root không chính xác hoặc không thể kết nối. Vui lòng nhập lại!${NC}"
+                fi
+            done
+        fi
+
         read_input "    • Tên Database muốn tạo [Mặc định: ${DEFAULT_DB_NAME}]: " "${DEFAULT_DB_NAME}" DB_NAME
         read_input "    • Tên User Database muốn tạo [Mặc định: ${DEFAULT_DB_USER}]: " "${DEFAULT_DB_USER}" DB_USER
         DB_PASS="$(generate_random_password)"
@@ -207,11 +223,29 @@ if [ "$HAS_EXISTING_DB" = true ]; then
         AUTO_PROVISION_DB=true
         INSTALL_DB_PACKAGE=false
     else
-        read_input "    • Địa chỉ máy chủ CSDL (Host) [Mặc định: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
-        read_input "    • Cổng CSDL (Port) [Mặc định: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
-        read_input "    • Tên Cơ sở dữ liệu đã tạo sẵn [Mặc định: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
-        read_input "    • Tên Người dùng Database [Mặc định: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
-        read_input "    • Mật khẩu Database: " "" DB_PASS
+        while true; do
+            read_input "    • Địa chỉ máy chủ CSDL (Host) [Mặc định: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
+            read_input "    • Cổng CSDL (Port) [Mặc định: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
+            read_input "    • Tên Cơ sở dữ liệu đã tạo sẵn [Mặc định: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
+            read_input "    • Tên Người dùng Database [Mặc định: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
+            read_input "    • Mật khẩu Database: " "" DB_PASS
+
+            # Kiểm tra kết nối thử tới database đã cung cấp
+            MYSQL_AUTH_TEST="-u${DB_USER} -h${DB_HOST} -P${DB_PORT}"
+            if [ -n "$DB_PASS" ]; then
+                MYSQL_AUTH_TEST="${MYSQL_AUTH_TEST} -p${DB_PASS}"
+            fi
+            if mariadb $MYSQL_AUTH_TEST -e "USE \`${DB_NAME}\`;" >/dev/null 2>&1 || mysql $MYSQL_AUTH_TEST -e "USE \`${DB_NAME}\`;" >/dev/null 2>&1; then
+                echo -e "      ${GREEN}✔ Kết nối tới Database \`${DB_NAME}\` thành công!${NC}"
+                break
+            else
+                echo -e "      ${YELLOW}⚠ Không thể kết nối thử tới Database \`${DB_NAME}\` với thông tin vừa nhập.${NC}"
+                read_input "      -> Bạn có muốn thử nhập lại không? (Y/n) [Mặc định: Y]: " "Y" RETRY_DB
+                if [[ ! "$RETRY_DB" =~ ^[Yy]$ ]]; then
+                    break
+                fi
+            fi
+        done
         MARIADB_ROOT_PASS="[N/A - Database Đã Cấu Hình Sẵn]"
         AUTO_PROVISION_DB=false
         INSTALL_DB_PACKAGE=false
