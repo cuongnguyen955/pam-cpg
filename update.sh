@@ -67,15 +67,14 @@ echo -e "${CYAN}[1/4] Đang kiểm tra và tải file thực thi nhị phân m�
 TEMP_UPDATE_DIR=$(mktemp -d /tmp/pam-update-XXXXXX)
 trap 'rm -rf "${TEMP_UPDATE_DIR}"' EXIT
 
-if [ -f "./pam-cpg" ]; then
-    echo -e "      ✔ Sử dụng file thực thi nhị phân cục bộ có sẵn: ./pam-cpg"
-    cp -f "./pam-cpg" "${TEMP_UPDATE_DIR}/pam-cpg"
-else
-    DOWNLOAD_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/main/pam-cpg"
-    echo -e "      -> Đang tải từ: ${CYAN}${DOWNLOAD_URL}${NC}..."
-    curl -fsSL "${DOWNLOAD_URL}?t=$(date +%s)" -o "${TEMP_UPDATE_DIR}/pam-cpg"
-    echo -e "      ${GREEN}✔ Tải thành công file nhị phân mới.${NC}"
-fi
+echo -e "${CYAN}[1/4] Đang tải file thực thi nhị phân mới nhất từ GitHub...${NC}"
+TEMP_UPDATE_DIR=$(mktemp -d /tmp/pam-update-XXXXXX)
+trap 'rm -rf "${TEMP_UPDATE_DIR}"' EXIT
+
+DOWNLOAD_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/main/pam-cpg"
+echo -e "      -> Đang tải từ: ${CYAN}${DOWNLOAD_URL}${NC}..."
+curl -fsSL "${DOWNLOAD_URL}?t=$(date +%s)" -o "${TEMP_UPDATE_DIR}/pam-cpg"
+echo -e "      ${GREEN}✔ Tải thành công file nhị phân mới nhất.${NC}"
 
 chmod +x "${TEMP_UPDATE_DIR}/pam-cpg"
 
