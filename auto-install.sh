@@ -148,6 +148,25 @@ read_input() {
     eval "$var_name=\"\$user_val\""
 }
 
+# Kiểm tra nếu máy chủ ĐÃ CÓ phiên bản PAM-CPG đang hoạt động
+if [ -f "${INSTALL_DIR}/.env" ] && [ -f "${INSTALL_DIR}/bin/pam-cpg" ]; then
+    echo -e "\n${YELLOW}${BOLD}⚡ PHÁT HIỆN HỆ THỐNG PAM-CPG ĐÃ ĐƯỢC CÀI ĐẶT TRÊN MÁY CHỦ!${NC}"
+    echo -e "    Vui lòng chọn chế độ thực thi:"
+    echo -e "      [1] NÂNG CẤP HỆ THỐNG (In-Place Fast Update) - Giữ nguyên 100% CSDL & Cấu hình cũ. (Khuyến nghị)"
+    echo -e "      [2] CÀI ĐẶT MỚI / THIẾT LẬP LẠI TOÀN BỘ (Fresh Re-install)."
+    read_input "    -> Lựa chọn của bạn [1/2] [Mặc định: 1]: " "1" RUN_MODE
+
+    if [ "$RUN_MODE" = "1" ]; then
+        echo -e "\n${CYAN}-> Đang chuyển sang chế độ Nâng cấp hệ thống an toàn (Update Mode)...${NC}"
+        if [ -f "./update.sh" ]; then
+            exec bash "./update.sh"
+        else
+            exec bash -c "$(curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/update.sh?t=$(date +%s))"
+        fi
+        exit 0
+    fi
+fi
+
 # 3. Thu thập thông tin cấu hình (Interactive Configuration)
 echo -e "\n${CYAN}[*] Bước 2/7: Thiết lập tham số cấu hình hệ thống${NC}"
 echo -e "    -> Đang quét dải cổng 9000 - 9999 để tìm cổng khả dụng tối ưu..."
