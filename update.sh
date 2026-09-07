@@ -62,15 +62,25 @@ echo -e "   • Systemd Service   : ${CYAN}${SERVICE_NAME}.service${NC}"
 echo -e "   • Active Web Port   : ${GREEN}${BOLD}${INSTALLED_PORT}${NC}"
 echo ""
 
-# 3. Download the latest binary from GitHub
-echo -e "${CYAN}[1/4] Checking and downloading the latest binary from GitHub...${NC}"
+# 3. Obtain the latest binary (prioritize local file if running from repo, otherwise download from GitHub)
+echo -e "${CYAN}[1/4] Checking and preparing the latest binary executable...${NC}"
 TEMP_UPDATE_DIR=$(mktemp -d /tmp/pam-update-XXXXXX)
 trap 'rm -rf "${TEMP_UPDATE_DIR}"' EXIT
 
-DOWNLOAD_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/main/pam-cpg"
-echo -e "      -> Fetching from: ${CYAN}${DOWNLOAD_URL}${NC}..."
-curl -fsSL "${DOWNLOAD_URL}?t=$(date +%s)" -o "${TEMP_UPDATE_DIR}/pam-cpg"
-echo -e "      ${GREEN}✔ Successfully downloaded the latest binary executable.${NC}"
+if [ -f "./pam-cpg" ] && [ "$(pwd)" != "${INSTALL_DIR}" ] && [ "$(pwd)" != "${INSTALL_DIR}/bin" ]; then
+    echo -e "      -> Using local updated binary: ${CYAN}./pam-cpg${NC}..."
+    cp -f "./pam-cpg" "${TEMP_UPDATE_DIR}/pam-cpg"
+    echo -e "      ${GREEN}✔ Successfully loaded the local binary executable.${NC}"
+elif [ -f "./build/bin/PAM-MQ" ]; then
+    echo -e "      -> Using local build binary: ${CYAN}./build/bin/PAM-MQ${NC}..."
+    cp -f "./build/bin/PAM-MQ" "${TEMP_UPDATE_DIR}/pam-cpg"
+    echo -e "      ${GREEN}✔ Successfully loaded the local binary executable.${NC}"
+else
+    DOWNLOAD_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/main/pam-cpg"
+    echo -e "      -> Fetching from: ${CYAN}${DOWNLOAD_URL}${NC}..."
+    curl -fsSL "${DOWNLOAD_URL}?t=$(date +%s)" -o "${TEMP_UPDATE_DIR}/pam-cpg"
+    echo -e "      ${GREEN}✔ Successfully downloaded the latest binary executable from GitHub.${NC}"
+fi
 
 chmod +x "${TEMP_UPDATE_DIR}/pam-cpg"
 
