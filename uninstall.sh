@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # PAM-CPG / PAM-MQ - ONE-CLICK COMPLETE UNINSTALLER SCRIPT
-# Tự động gỡ bỏ sạch sẽ toàn bộ dịch vụ, database, packages và dữ liệu cài đặt
+# Cleanly removes all services, databases, packages, and installation data
 # ==============================================================================
 
 set -e
 
-# Màu sắc giao diện
+# UI Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -21,7 +21,7 @@ INSTALL_DIR_MQ="/opt/pam-mq"
 SERVICE_CPG="pam-cpg"
 SERVICE_MQ="pam-mq"
 
-# Helper an toàn đọc dữ liệu từ Terminal TTY
+# Safe helper for reading TTY input
 read_input() {
     local prompt_msg="$1"
     local default_val="$2"
@@ -47,13 +47,13 @@ echo "          PAM-CPG / PAM-MQ - COMPLETE SYSTEM UNINSTALLER                 "
 echo "=========================================================================="
 echo -e "${NC}"
 
-# 1. Kiểm tra quyền root
+# 1. Check root privileges
 if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}[!] Lỗi: Bạn bắt buộc phải chạy script này với quyền root (sudo ./uninstall.sh)${NC}"
+    echo -e "${RED}[!] Error: You must run this script with root privileges (sudo ./uninstall.sh)${NC}"
     exit 1
 fi
 
-# Phát hiện OS
+# OS Detection
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     OS_NAME=$ID
@@ -61,17 +61,17 @@ else
     OS_NAME="unknown"
 fi
 
-echo -e "${YELLOW}Cảnh báo: Script này sẽ dừng toàn bộ dịch vụ PAM, xóa thư mục cài đặt, xóa Database và tùy chọn gỡ bỏ MariaDB Server.${NC}\n"
-read_input "Bạn có chắc chắn muốn tiến hành GỠ BỎ TOÀN BỘ hệ thống? (y/N): " "N" CONFIRM_UNINSTALL
+echo -e "${YELLOW}Warning: This script will stop all PAM services, delete installation directories, drop the database, and optionally purge MariaDB Server.${NC}\n"
+read_input "Are you sure you want to completely UNINSTALL the system? (y/N): " "N" CONFIRM_UNINSTALL
 
 if ! [[ "$CONFIRM_UNINSTALL" =~ ^[Yy]$ ]]; then
-    echo -e "\n${CYAN}-> Đã hủy thao tác gỡ bỏ. Hệ thống được giữ nguyên.${NC}"
+    echo -e "\n${CYAN}-> Uninstall aborted. System remains unchanged.${NC}"
     exit 0
 fi
 
-read_input "Bạn có muốn GỠ BỎ HOÀN TOÀN gói MariaDB/MySQL Server khỏi máy chủ không? (y/N) [Mặc định: y]: " "y" PURGE_MARIADB
+read_input "Do you want to COMPLETELY PURGE the MariaDB/MySQL Server package from this host? (y/N) [Default: y]: " "y" PURGE_MARIADB
 
-# Lấy port từ .env để đóng firewall nếu có
+# Read port from .env to close firewall rule if present
 INSTALLED_PORT=""
 if [ -f "${INSTALL_DIR_CPG}/.env" ]; then
     INSTALLED_PORT=$(grep -E "^PORT=" "${INSTALL_DIR_CPG}/.env" | cut -d'=' -f2 | tr -d ' "')
@@ -79,8 +79,8 @@ elif [ -f "${INSTALL_DIR_MQ}/.env" ]; then
     INSTALLED_PORT=$(grep -E "^PORT=" "${INSTALL_DIR_MQ}/.env" | cut -d'=' -f2 | tr -d ' "')
 fi
 
-# 2. Dừng và gỡ bỏ Systemd Services
-echo -e "\n${CYAN}[1/5] Đang dừng và hủy đăng ký Systemd Services...${NC}"
+# 2. Stop and remove Systemd Services
+echo -e "\n${CYAN}[1/5] Stopping and unregistering Systemd Services...${NC}"
 systemctl stop ${SERVICE_CPG} >/dev/null 2>&1 || true
 systemctl disable ${SERVICE_CPG} >/dev/null 2>&1 || true
 rm -f "/etc/systemd/system/${SERVICE_CPG}.service"
@@ -92,10 +92,10 @@ rm -f "/etc/systemd/system/${SERVICE_MQ}.service"
 systemctl daemon-reload
 pkill -9 -f "pam-cpg" >/dev/null 2>&1 || true
 pkill -9 -f "PAM-MQ" >/dev/null 2>&1 || true
-echo -e "      ${GREEN}✔ Đã dừng và xóa sạch các dịch vụ Systemd.${NC}"
+echo -e "      ${GREEN}✔ Stopped and removed Systemd services.${NC}"
 
-# 3. Xóa Database & User PAM trong MariaDB / MySQL
-echo -e "\n${CYAN}[2/5] Đang dọn dẹp Database \`pamcpg\` và User \`pamcpg\`...${NC}"
+# 3. Drop Database & User in MariaDB / MySQL
+echo -e "\n${CYAN}[2/5] Dropping Database \`pamcpg\` and User \`pamcpg\`...${NC}"
 MYSQL_CMD="mariadb"
 if ! command -v mariadb >/dev/null 2>&1; then
     MYSQL_CMD="mysql"
@@ -108,14 +108,14 @@ DROP USER IF EXISTS 'pamcpg'@'127.0.0.1';
 DROP USER IF EXISTS 'pamcpg'@'localhost';
 FLUSH PRIVILEGES;
 EOF
-    echo -e "      ${GREEN}✔ Đã xóa Database \`pamcpg\` và phân quyền User liên quan.${NC}"
+    echo -e "      ${GREEN}✔ Dropped Database \`pamcpg\` and associated user permissions.${NC}"
 else
-    echo -e "      ${YELLOW}⚠ Không tìm thấy MariaDB/MySQL Client, bỏ qua bước xóa DB.${NC}"
+    echo -e "      ${YELLOW}⚠ MariaDB/MySQL Client not found, skipping DB drop.${NC}"
 fi
 
-# 4. Gỡ bỏ gói MariaDB Server nếu người dùng yêu cầu
+# 4. Purge MariaDB Server package if requested
 if [[ "$PURGE_MARIADB" =~ ^[Yy]$ ]]; then
-    echo -e "\n${CYAN}[3/5] Đang gỡ bỏ hoàn toàn gói MariaDB Server và dữ liệu MySQL...${NC}"
+    echo -e "\n${CYAN}[3/5] Purging MariaDB Server package and MySQL data directories...${NC}"
     systemctl stop mariadb mysql >/dev/null 2>&1 || true
     systemctl disable mariadb mysql >/dev/null 2>&1 || true
 
@@ -128,38 +128,38 @@ if [[ "$PURGE_MARIADB" =~ ^[Yy]$ ]]; then
         yum remove -y mariadb-server mariadb >/dev/null 2>&1 || true
         rm -rf /var/lib/mysql /etc/my.cnf* /var/log/mariadb
     fi
-    echo -e "      ${GREEN}✔ Đã gỡ bỏ MariaDB Server sạch sẽ khỏi hệ điều hành.${NC}"
+    echo -e "      ${GREEN}✔ MariaDB Server package purged completely from operating system.${NC}"
 else
-    echo -e "\n${CYAN}[3/5] Bỏ qua gỡ bỏ gói MariaDB Server (giữ nguyên CSDL hệ thống khác).${NC}"
+    echo -e "\n${CYAN}[3/5] Skipping MariaDB Server removal (preserving other system databases).${NC}"
 fi
 
-# 5. Xóa toàn bộ thư mục cài đặt & cấu hình
-echo -e "\n${CYAN}[4/5] Đang xóa toàn bộ thư mục cài đặt và tệp tin liên quan...${NC}"
+# 5. Remove installation directories and configuration files
+echo -e "\n${CYAN}[4/5] Removing installation directories and related files...${NC}"
 rm -rf "${INSTALL_DIR_CPG}"
 rm -rf "${INSTALL_DIR_MQ}"
 rm -rf "/root/.Tool-SSH"
 rm -rf "/tmp/pam-cpg"
 rm -rf "/tmp/pam-cpg-test"
-echo -e "      ${GREEN}✔ Đã xóa sạch các thư mục: ${INSTALL_DIR_CPG}, ${INSTALL_DIR_MQ}, /root/.Tool-SSH${NC}"
+echo -e "      ${GREEN}✔ Cleaned up directories: ${INSTALL_DIR_CPG}, ${INSTALL_DIR_MQ}, /root/.Tool-SSH${NC}"
 
-# 6. Đóng cổng tường lửa UFW nếu đã mở
-echo -e "\n${CYAN}[5/5] Kiểm tra và dọn dẹp quy tắc tường lửa (Firewall)...${NC}"
+# 6. Revert Firewall rules (UFW)
+echo -e "\n${CYAN}[5/5] Checking and cleaning up Firewall rules (UFW)...${NC}"
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
     if [ -n "$INSTALLED_PORT" ]; then
         ufw delete allow "${INSTALLED_PORT}/tcp" >/dev/null 2>&1 || true
     fi
     ufw delete allow 9000/tcp >/dev/null 2>&1 || true
     ufw delete allow 8083/tcp >/dev/null 2>&1 || true
-    echo -e "      ${GREEN}✔ Đã thu hồi quyền mở cổng tường lửa.${NC}"
+    echo -e "      ${GREEN}✔ Revoked open firewall port rules.${NC}"
 else
-    echo -e "      ${GREEN}✔ Tường lửa UFW không bật hoặc không có quy tắc cần xóa.${NC}"
+    echo -e "      ${GREEN}✔ UFW firewall inactive or no rules to delete.${NC}"
 fi
 
 echo -e "\n${GREEN}${BOLD}"
 echo "=========================================================================="
-echo "    🎉 HOÀN TẤT! HỆ THỐNG ĐÃ ĐƯỢC GỠ BỎ TOÀN BỘ & SẠCH SẼ 100%!          "
+echo "    🎉 COMPLETE! SYSTEM HAS BEEN UNINSTALLED & CLEANED 100%!              "
 echo "=========================================================================="
 echo -e "${NC}"
-echo -e "Máy chủ hiện đã trở về trạng thái sạch sẽ ban đầu (Clean slate)."
-echo -e "Bạn có thể chạy lại lệnh cài đặt mới từ Git Public bất kỳ lúc nào:"
+echo -e "Host server is now restored to a clean state."
+echo -e "You can reinstall anytime using the one-click installer command:"
 echo -e "👉 ${CYAN}${BOLD}bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/cuongnguyen955/pam-cpg/main/auto-install.sh?t=\$(date +%s))\"${NC}\n"

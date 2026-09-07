@@ -6,7 +6,7 @@
 
 set -e
 
-# Màu sắc giao diện
+# UI Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -25,7 +25,7 @@ DEFAULT_DB_PORT="3306"
 DEFAULT_DB_HOST="127.0.0.1"
 GITHUB_REPO="cuongnguyen955/pam-cpg"
 
-# Hàm kiểm tra xem port có đang bị ứng dụng khác chiếm dụng không
+# Function to check if a port is currently in use
 is_port_in_use() {
     local port="$1"
     if command -v ss >/dev/null 2>&1; then
@@ -53,7 +53,7 @@ is_port_in_use() {
     return 1
 }
 
-# Hàm kiểm tra dịch vụ MariaDB/MySQL cục bộ có đang hoạt động không
+# Function to check if local MariaDB/MySQL is running
 is_local_db_running() {
     if is_port_in_use 3306; then
         return 0
@@ -67,7 +67,7 @@ is_local_db_running() {
     return 1
 }
 
-# Hàm kiểm tra gói MariaDB Server đã được cài đặt trên máy chưa
+# Function to check if MariaDB Server package is installed
 is_local_db_installed() {
     if command -v mariadbd >/dev/null 2>&1 || command -v mysqld >/dev/null 2>&1; then
         return 0
@@ -78,7 +78,7 @@ is_local_db_installed() {
     return 1
 }
 
-# Hàm tự động quét tìm cổng trống đầu tiên trong dải cổng chỉ định
+# Function to scan and find the first available free port in range
 find_free_port_in_range() {
     local start_port=${1:-9000}
     local end_port=${2:-9999}
@@ -92,7 +92,7 @@ find_free_port_in_range() {
     echo "9000"
 }
 
-# Hàm sinh chuỗi ngẫu nhiên an toàn
+# Function to generate secure random password
 generate_random_password() {
     openssl rand -base64 16 | tr -dc 'a-zA-Z0-9!@#$%^&*' | head -c 16
 }
@@ -105,31 +105,31 @@ echo "                https://github.com/${GITHUB_REPO}                         
 echo "=========================================================================="
 echo -e "${NC}"
 
-# 1. Kiểm tra quyền root
+# 1. Check root privileges
 if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}[!] Lỗi: Bạn bắt buộc phải chạy script này với quyền root (sudo ./auto-install.sh)${NC}"
+    echo -e "${RED}[!] Error: You must run this script with root privileges (sudo ./auto-install.sh)${NC}"
     exit 1
 fi
 
-# 2. Phát hiện OS
-echo -e "${CYAN}[*] Bước 1/7: Kiểm tra môi trường hệ điều hành...${NC}"
+# 2. OS Detection
+echo -e "${CYAN}[*] Step 1/7: Checking operating system environment...${NC}"
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     OS_NAME=$ID
     OS_VERSION=$VERSION_ID
-    echo -e "    -> Hệ điều hành phát hiện: ${GREEN}${NAME} (${VERSION_ID:-latest})${NC}"
+    echo -e "    -> Detected OS: ${GREEN}${NAME} (${VERSION_ID:-latest})${NC}"
 else
     OS_NAME="unknown"
-    echo -e "${YELLOW}[!] Sử dụng cấu hình chuẩn Linux.${NC}"
+    echo -e "${YELLOW}[!] Using generic Linux configuration.${NC}"
 fi
 
-# Lấy địa chỉ IP máy chủ
+# Get host server IP address
 LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [ -z "$LOCAL_IP" ]; then
     LOCAL_IP="127.0.0.1"
 fi
 
-# Helper an toàn đọc dữ liệu từ Terminal TTY (chống nuốt script khi chạy curl ... | bash)
+# Safe helper for reading TTY input (handles curl | bash piped executions)
 read_input() {
     local prompt_msg="$1"
     local default_val="$2"
@@ -148,16 +148,16 @@ read_input() {
     eval "$var_name=\"\$user_val\""
 }
 
-# Kiểm tra nếu máy chủ ĐÃ CÓ phiên bản PAM-CPG đang hoạt động
+# Check if PAM-CPG is ALREADY installed on this server
 if [ -f "${INSTALL_DIR}/.env" ] && [ -f "${INSTALL_DIR}/bin/pam-cpg" ]; then
-    echo -e "\n${YELLOW}${BOLD}⚡ PHÁT HIỆN HỆ THỐNG PAM-CPG ĐÃ ĐƯỢC CÀI ĐẶT TRÊN MÁY CHỦ!${NC}"
-    echo -e "    Vui lòng chọn chế độ thực thi:"
-    echo -e "      [1] NÂNG CẤP HỆ THỐNG (In-Place Fast Update) - Giữ nguyên 100% CSDL & Cấu hình cũ. (Khuyến nghị)"
-    echo -e "      [2] CÀI ĐẶT MỚI / THIẾT LẬP LẠI TOÀN BỘ (Fresh Re-install)."
-    read_input "    -> Lựa chọn của bạn [1/2] [Mặc định: 1]: " "1" RUN_MODE
+    echo -e "\n${YELLOW}${BOLD}⚡ DETECTED EXISTING PAM-CPG INSTALLATION ON THIS SERVER!${NC}"
+    echo -e "    Please select execution mode:"
+    echo -e "      [1] UPGRADE SYSTEM (In-Place Fast Update) - Preserves 100% of existing DB & Config. (Recommended)"
+    echo -e "      [2] FRESH INSTALLATION / FULL RESET (Fresh Re-install)."
+    read_input "    -> Your choice [1/2] [Default: 1]: " "1" RUN_MODE
 
     if [ "$RUN_MODE" = "1" ]; then
-        echo -e "\n${CYAN}-> Đang chuyển sang chế độ Nâng cấp hệ thống an toàn (Update Mode)...${NC}"
+        echo -e "\n${CYAN}-> Switching to Safe System Update Mode...${NC}"
         if [ -f "./update.sh" ]; then
             exec bash "./update.sh"
         else
@@ -167,36 +167,36 @@ if [ -f "${INSTALL_DIR}/.env" ] && [ -f "${INSTALL_DIR}/bin/pam-cpg" ]; then
     fi
 fi
 
-# 3. Thu thập thông tin cấu hình (Interactive Configuration)
-echo -e "\n${CYAN}[*] Bước 2/7: Thiết lập tham số cấu hình hệ thống${NC}"
-echo -e "    -> Đang quét dải cổng 9000 - 9999 để tìm cổng khả dụng tối ưu..."
+# 3. Interactive Configuration Gathering
+echo -e "\n${CYAN}[*] Step 2/7: Configuring system parameters${NC}"
+echo -e "    -> Scanning port range 9000 - 9999 for available free ports..."
 SUGGESTED_PORT=$(find_free_port_in_range 9000 9999)
-echo -e "    -> Cổng trống khả dụng gợi ý: ${GREEN}${BOLD}${SUGGESTED_PORT}${NC}"
-echo -e "${YELLOW}(Nhấn Enter để tự động sử dụng giá trị gợi ý hoặc nhập cổng theo nhu cầu)${NC}\n"
+echo -e "    -> Suggested free port: ${GREEN}${BOLD}${SUGGESTED_PORT}${NC}"
+echo -e "${YELLOW}(Press Enter to accept suggested port or specify your preferred port)${NC}\n"
 
-# Vòng lặp nhập cổng và kiểm tra xung đột
+# Loop for port input and conflict validation
 while true; do
-    read_input "1. Cổng Web Gateway PAM-CPG [Gợi ý: ${SUGGESTED_PORT}]: " "${SUGGESTED_PORT}" WEB_PORT
+    read_input "1. PAM-CPG Web Gateway Port [Suggested: ${SUGGESTED_PORT}]: " "${SUGGESTED_PORT}" WEB_PORT
 
-    # Kiểm tra tính hợp lệ (phải là số nguyên từ 1 đến 65535)
+    # Validate integer range 1-65535
     if ! [[ "$WEB_PORT" =~ ^[0-9]+$ ]] || [ "$WEB_PORT" -lt 1 ] || [ "$WEB_PORT" -gt 65535 ]; then
-        echo -e "    ${RED}[!] Lỗi: Cổng phải là số nguyên trong khoảng 1 - 65535. Vui lòng nhập lại!${NC}"
+        echo -e "    ${RED}[!] Error: Port must be an integer between 1 and 65535. Please try again!${NC}"
         continue
     fi
 
-    # Kiểm tra cổng có bị chiếm dụng không
+    # Check port collision
     if is_port_in_use "$WEB_PORT"; then
-        echo -e "    ${RED}[!] Cảnh báo: Cổng ${WEB_PORT} hiện đang bị chiếm dụng bởi ứng dụng khác trên máy chủ!${NC}"
-        echo -e "    ${YELLOW}    -> Bạn có thể nhấn Enter để dùng cổng gợi ý [${SUGGESTED_PORT}] hoặc nhập cổng khác.${NC}"
+        echo -e "    ${RED}[!] Warning: Port ${WEB_PORT} is currently in use by another application!${NC}"
+        echo -e "    ${YELLOW}    -> Press Enter to use suggested port [${SUGGESTED_PORT}] or specify another port.${NC}"
     else
-        echo -e "    ${GREEN}✔ Cổng ${WEB_PORT} hợp lệ và sẵn sàng sử dụng.${NC}"
+        echo -e "    ${GREEN}✔ Port ${WEB_PORT} is valid and available.${NC}"
         break
     fi
 done
 
-read_input "2. Tên miền Domain sử dụng (nếu có, VD: pam.company.vn) [Mặc định: ${LOCAL_IP}]: " "${LOCAL_IP}" DOMAIN
+read_input "2. Domain name / Hostname (optional, e.g. pam.company.com) [Default: ${LOCAL_IP}]: " "${LOCAL_IP}" DOMAIN
 
-# Phát hiện dịch vụ MariaDB / MySQL hiện có trên hệ thống
+# Detect existing MariaDB / MySQL on host
 HAS_EXISTING_DB=false
 if is_local_db_running || is_local_db_installed; then
     HAS_EXISTING_DB=true
@@ -208,33 +208,33 @@ ADMIN_DB_USER="root"
 ADMIN_DB_PASS=""
 
 if [ "$HAS_EXISTING_DB" = true ]; then
-    echo -e "\n    ${YELLOW}⚡ Phát hiện: Máy chủ ĐÃ CÓ sẵn dịch vụ MariaDB / MySQL.${NC}"
-    echo -e "    Vui lòng chọn phương thức thiết lập Cơ sở dữ liệu cho PAM-CPG:"
-    echo -e "      [1] Tự động tạo Database \`${DEFAULT_DB_NAME}\` & User cho PAM-CPG (Khuyến nghị)."
-    echo -e "      [2] Bạn tự cung cấp Database & User đã tạo sẵn từ trước cho PAM-CPG."
-    read_input "    -> Nhập lựa chọn [1/2] [Mặc định: 1]: " "1" DB_CHOICE
+    echo -e "\n    ${YELLOW}⚡ Notice: Existing MariaDB / MySQL service detected on this server.${NC}"
+    echo -e "    Please select database setup method for PAM-CPG:"
+    echo -e "      [1] Automatically create Database \`${DEFAULT_DB_NAME}\` & dedicated User for PAM-CPG (Recommended)."
+    echo -e "      [2] Use an existing pre-created Database & User for PAM-CPG."
+    read_input "    -> Enter choice [1/2] [Default: 1]: " "1" DB_CHOICE
 
     if [ "$DB_CHOICE" = "1" ]; then
         ADMIN_DB_USER="root"
         ADMIN_DB_PASS=""
 
-        # Tự động kiểm tra quyền quản trị root qua socket
+        # Test root socket auth
         if mariadb -u root -e "SELECT 1;" >/dev/null 2>&1 || mysql -u root -e "SELECT 1;" >/dev/null 2>&1; then
-            echo -e "    ${GREEN}✔ Tự động xác thực quyền Quản trị MariaDB (root) qua socket thành công.${NC}"
+            echo -e "    ${GREEN}✔ Verified MariaDB Admin (root) permissions via unix socket.${NC}"
         else
             while true; do
-                read_input "    • Nhập Mật khẩu tài khoản Quản trị MariaDB (root): " "" ADMIN_DB_PASS
+                read_input "    • Enter MariaDB Admin (root) password: " "" ADMIN_DB_PASS
                 if mariadb -u root -p"${ADMIN_DB_PASS}" -e "SELECT 1;" >/dev/null 2>&1 || mysql -u root -p"${ADMIN_DB_PASS}" -e "SELECT 1;" >/dev/null 2>&1; then
-                    echo -e "      ${GREEN}✔ Xác thực mật khẩu root thành công!${NC}"
+                    echo -e "      ${GREEN}✔ Root password verified successfully!${NC}"
                     break
                 else
-                    echo -e "      ${RED}[!] Mật khẩu root không chính xác hoặc không thể kết nối. Vui lòng nhập lại!${NC}"
+                    echo -e "      ${RED}[!] Invalid root password or cannot connect. Please try again!${NC}"
                 fi
             done
         fi
 
-        read_input "    • Tên Database muốn tạo [Mặc định: ${DEFAULT_DB_NAME}]: " "${DEFAULT_DB_NAME}" DB_NAME
-        read_input "    • Tên User Database muốn tạo [Mặc định: ${DEFAULT_DB_USER}]: " "${DEFAULT_DB_USER}" DB_USER
+        read_input "    • Database Name to create [Default: ${DEFAULT_DB_NAME}]: " "${DEFAULT_DB_NAME}" DB_NAME
+        read_input "    • Database Username to create [Default: ${DEFAULT_DB_USER}]: " "${DEFAULT_DB_USER}" DB_USER
         DB_PASS="$(generate_random_password)"
         MARIADB_ROOT_PASS="${ADMIN_DB_PASS}"
         DB_HOST="127.0.0.1"
@@ -243,35 +243,35 @@ if [ "$HAS_EXISTING_DB" = true ]; then
         INSTALL_DB_PACKAGE=false
     else
         while true; do
-            read_input "    • Địa chỉ máy chủ CSDL (Host) [Mặc định: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
-            read_input "    • Cổng CSDL (Port) [Mặc định: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
-            read_input "    • Tên Cơ sở dữ liệu đã tạo sẵn [Mặc định: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
-            read_input "    • Tên Người dùng Database [Mặc định: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
-            read_input "    • Mật khẩu Database: " "" DB_PASS
+            read_input "    • Database Host [Default: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
+            read_input "    • Database Port [Default: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
+            read_input "    • Pre-created Database Name [Default: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
+            read_input "    • Database Username [Default: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
+            read_input "    • Database Password: " "" DB_PASS
 
-            # Kiểm tra kết nối thử tới database đã cung cấp
+            # Test connection to provided database
             MYSQL_AUTH_TEST="-u${DB_USER} -h${DB_HOST} -P${DB_PORT}"
             if [ -n "$DB_PASS" ]; then
                 MYSQL_AUTH_TEST="${MYSQL_AUTH_TEST} -p${DB_PASS}"
             fi
             if mariadb $MYSQL_AUTH_TEST -e "USE \`${DB_NAME}\`;" >/dev/null 2>&1 || mysql $MYSQL_AUTH_TEST -e "USE \`${DB_NAME}\`;" >/dev/null 2>&1; then
-                echo -e "      ${GREEN}✔ Kết nối tới Database \`${DB_NAME}\` thành công!${NC}"
+                echo -e "      ${GREEN}✔ Connected to Database \`${DB_NAME}\` successfully!${NC}"
                 break
             else
-                echo -e "      ${YELLOW}⚠ Không thể kết nối thử tới Database \`${DB_NAME}\` với thông tin vừa nhập.${NC}"
-                read_input "      -> Bạn có muốn thử nhập lại không? (Y/n) [Mặc định: Y]: " "Y" RETRY_DB
+                echo -e "      ${YELLOW}⚠ Cannot connect to Database \`${DB_NAME}\` with provided credentials.${NC}"
+                read_input "      -> Would you like to retry? (Y/n) [Default: Y]: " "Y" RETRY_DB
                 if [[ ! "$RETRY_DB" =~ ^[Yy]$ ]]; then
                     break
                 fi
             fi
         done
-        MARIADB_ROOT_PASS="[N/A - Database Đã Cấu Hình Sẵn]"
+        MARIADB_ROOT_PASS="[N/A - Pre-configured Database]"
         AUTO_PROVISION_DB=false
         INSTALL_DB_PACKAGE=false
     fi
 else
-    echo -e "\n    ${CYAN}⚡ Thông báo: Máy chủ CHƯA CÓ dịch vụ MariaDB / MySQL cục bộ.${NC}"
-    read_input "3. Tự động cài đặt & cấu hình mới MariaDB Server cục bộ? (Y/n) [Mặc định: Y]: " "Y" INSTALL_LOCAL_DB
+    echo -e "\n    ${CYAN}⚡ Notice: No local MariaDB / MySQL service found on this server.${NC}"
+    read_input "3. Automatically install & configure local MariaDB Server? (Y/n) [Default: Y]: " "Y" INSTALL_LOCAL_DB
 
     if [[ "$INSTALL_LOCAL_DB" =~ ^[Yy]$ ]]; then
         INSTALL_DB_PACKAGE=true
@@ -285,31 +285,31 @@ else
     else
         INSTALL_DB_PACKAGE=false
         AUTO_PROVISION_DB=false
-        read_input "    • Địa chỉ máy chủ CSDL Ngoại vi (Host) [Mặc định: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
-        read_input "    • Cổng CSDL (Port) [Mặc định: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
-        read_input "    • Tên Cơ sở dữ liệu [Mặc định: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
-        read_input "    • Tên Người dùng Database [Mặc định: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
-        read_input "    • Mật khẩu Database: " "" DB_PASS
-        MARIADB_ROOT_PASS="[N/A - Database Ngoại Vi]"
+        read_input "    • External Database Host [Default: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
+        read_input "    • External Database Port [Default: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
+        read_input "    • External Database Name [Default: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
+        read_input "    • External Database Username [Default: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
+        read_input "    • External Database Password: " "" DB_PASS
+        MARIADB_ROOT_PASS="[N/A - External Database]"
     fi
 fi
 
 DB_DSN="${DB_USER}:${DB_PASS}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?charset=utf8mb4&parseTime=True&loc=Local"
 
-echo -e "\n${GREEN}✔ Đã ghi nhận thông số cấu hình:${NC}"
+echo -e "\n${GREEN}✔ Recorded configuration parameters:${NC}"
 echo -e "  • Web Gateway Port : ${BOLD}${WEB_PORT}${NC}"
 echo -e "  • Domain / Host IP : ${BOLD}${DOMAIN}${NC}"
 echo -e "  • Database Target  : ${BOLD}${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}${NC}"
 
-# 4. Cài đặt các gói phụ thuộc (FFmpeg, MariaDB, OpenSSL, curl, jq)
-echo -e "\n${CYAN}[*] Bước 3/7: Cài đặt các gói phụ thuộc hệ thống (FFmpeg, OpenSSL, MariaDB, JQ)...${NC}"
+# 4. Install dependencies (FFmpeg, MariaDB, OpenSSL, curl, jq)
+echo -e "\n${CYAN}[*] Step 3/7: Installing system dependencies (FFmpeg, OpenSSL, MariaDB, JQ)...${NC}"
 if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
     apt-get install -y -qq ffmpeg ca-certificates curl openssl tzdata jq >/dev/null 2>&1
 
     if [ "$INSTALL_DB_PACKAGE" = true ] || ( [ "$AUTO_PROVISION_DB" = true ] && ! is_local_db_installed ); then
-        echo -e "    -> Đang cài đặt MariaDB Server..."
+        echo -e "    -> Installing MariaDB Server..."
         apt-get install -y -qq mariadb-server mariadb-client >/dev/null 2>&1
         systemctl enable mariadb >/dev/null 2>&1
         systemctl start mariadb >/dev/null 2>&1
@@ -327,15 +327,15 @@ elif [ "$OS_NAME" = "centos" ] || [ "$OS_NAME" = "rhel" ] || [ "$OS_NAME" = "roc
         yum install -y mariadb >/dev/null 2>&1 || true
     fi
 fi
-echo -e "    ${GREEN}✔ Đã cài đặt xong các gói phụ thuộc.${NC}"
+echo -e "    ${GREEN}✔ System dependencies installed successfully.${NC}"
 
-# 5. Khởi tạo Cơ sở dữ liệu và phân quyền User DB
+# 5. Initialize Database and User Grants
 if [ "$AUTO_PROVISION_DB" = true ]; then
-    echo -e "\n${CYAN}[*] Bước 4/7: Tự động khởi tạo Database \`${DB_NAME}\` và phân quyền User \`${DB_USER}\`...${NC}"
+    echo -e "\n${CYAN}[*] Step 4/7: Initializing Database \`${DB_NAME}\` and granting permissions to User \`${DB_USER}\`...${NC}"
     
-    # Đảm bảo MariaDB Server đang chạy và socket sẵn sàng
+    # Ensure MariaDB Server is active and socket is ready
     if ! is_local_db_running; then
-        echo -e "    -> Đang khởi động MariaDB Server..."
+        echo -e "    -> Starting MariaDB Server..."
         systemctl enable mariadb >/dev/null 2>&1 || systemctl enable mysql >/dev/null 2>&1 || true
         systemctl start mariadb >/dev/null 2>&1 || systemctl start mysql >/dev/null 2>&1 || true
         for i in {1..10}; do
@@ -366,21 +366,21 @@ GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'127.0.0.1';
 GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';
 FLUSH PRIVILEGES;
 EOF
-    echo -e "    ${GREEN}✔ Database \`${DB_NAME}\` đã được tạo và thiết lập bảo mật thành công!${NC}"
+    echo -e "    ${GREEN}✔ Database \`${DB_NAME}\` initialized and secured successfully!${NC}"
 else
-    echo -e "\n${CYAN}[*] Bước 4/7: Sử dụng Cơ sở dữ liệu cấu hình sẵn \`${DB_NAME}\`...${NC}"
-    echo -e "    ${GREEN}✔ Ghi nhận CSDL Target: ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}${NC}"
+    echo -e "\n${CYAN}[*] Step 4/7: Using pre-configured Database \`${DB_NAME}\`...${NC}"
+    echo -e "    ${GREEN}✔ Target Database: ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}${NC}"
 fi
 
-# 6. Tạo thư mục hệ thống và tải/sao chép file thực thi pam-cpg
-echo -e "\n${CYAN}[*] Bước 5/7: Tạo cấu trúc thư mục và triển khai file thực thi vào ${INSTALL_DIR}...${NC}"
+# 6. Create system directory structure and deploy pam-cpg binary
+echo -e "\n${CYAN}[*] Step 5/7: Creating directory structure and deploying binary to ${INSTALL_DIR}...${NC}"
 mkdir -p "${INSTALL_DIR}/bin"
 mkdir -p "${INSTALL_DIR}/certs"
 mkdir -p "${INSTALL_DIR}/config"
 mkdir -p "${INSTALL_DIR}/shared/recordings"
 mkdir -p "${INSTALL_DIR}/shared/command_logs"
 
-# Lấy file binary: ưu tiên file cục bộ trong thư mục hiện tại, nếu không có thì tải từ GitHub Repo
+# Deploy binary executable: prioritize local file, fallback to GitHub
 if [ -f "./pam-cpg" ]; then
     cp -f "./pam-cpg" "${INSTALL_DIR}/bin/pam-cpg"
 elif [ -f "./PAM-MQ" ]; then
@@ -388,14 +388,14 @@ elif [ -f "./PAM-MQ" ]; then
 elif [ -f "./build/bin/PAM-MQ" ]; then
     cp -f "./build/bin/PAM-MQ" "${INSTALL_DIR}/bin/pam-cpg"
 else
-    echo -e "    -> Đang tải file thực thi \`pam-cpg\` từ GitHub (${GITHUB_REPO})..."
+    echo -e "    -> Downloading executable \`pam-cpg\` from GitHub (${GITHUB_REPO})..."
     curl -sSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/pam-cpg" -o "${INSTALL_DIR}/bin/pam-cpg"
 fi
 
 chmod +x "${INSTALL_DIR}/bin/pam-cpg"
 
-# 7. Tự động sinh chứng chỉ SSL 10 năm (3650 ngày)
-echo -e "\n${CYAN}[*] Bước 6/7: Tự động khởi tạo chứng chỉ bảo mật SSL (Thời hạn 10 năm)...${NC}"
+# 7. Generate 10-year SSL Certificate (3650 days)
+echo -e "\n${CYAN}[*] Step 6/7: Generating 10-Year SSL Certificate (3650 days)...${NC}"
 CERT_FILE="${INSTALL_DIR}/certs/server.crt"
 KEY_FILE="${INSTALL_DIR}/certs/server.key"
 
@@ -411,9 +411,9 @@ openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
     -addext "subjectAltName=${SAN_CONFIG}" >/dev/null 2>&1
 
 chmod 600 "${KEY_FILE}"
-echo -e "    ${GREEN}✔ Đã sinh chứng chỉ SSL 10 năm thành công tại ${INSTALL_DIR}/certs/${NC}"
+echo -e "    ${GREEN}✔ Generated 10-Year SSL Certificate at ${INSTALL_DIR}/certs/${NC}"
 
-# Tạo file .env lưu trữ cấu hình
+# Create .env configuration file
 cat <<EOF > "${INSTALL_DIR}/.env"
 # PAM-CPG Enterprise Configuration
 PORT=${WEB_PORT}
@@ -427,8 +427,8 @@ EOF
 
 chmod 600 "${INSTALL_DIR}/.env"
 
-# 8. Chạy chế độ Setup của pam-cpg để khởi tạo CSDL, MFA Secret, Recovery Code và 3 mảnh Shamir Master Key
-echo -e "\n${CYAN}[*] Bước 7/7: Khởi tạo hệ thống bảo mật (Admin, MFA TOTP & 3 Mảnh Khóa Shamir Master Key)...${NC}"
+# 8. Run Setup mode to initialize DB, Admin, MFA Secret, Recovery Code & 3 Shamir Master Key Shares
+echo -e "\n${CYAN}[*] Step 7/7: Initializing Security Engine (Admin, MFA TOTP & 3 Shamir Master Key Shares)...${NC}"
 SETUP_OUTPUT=$("${INSTALL_DIR}/bin/pam-cpg" --setup --db "${DB_DSN}" 2>/dev/null || true)
 CLEAN_JSON=$(echo "$SETUP_OUTPUT" | awk '/^{/{flag=1} flag; /^}/{flag=0}')
 if [ -z "$CLEAN_JSON" ] || ! echo "$CLEAN_JSON" | jq . >/dev/null 2>&1; then
@@ -437,44 +437,44 @@ fi
 
 ADMIN_USER=$(echo "$CLEAN_JSON" | jq -r '.admin_user // "admin"' 2>/dev/null || echo "admin")
 ADMIN_PASS=$(echo "$CLEAN_JSON" | jq -r '.admin_pass // "Admin@12345"' 2>/dev/null || echo "Admin@12345")
-MFA_SECRET=$(echo "$CLEAN_JSON" | jq -r '.mfa_secret // "Chưa khởi tạo"' 2>/dev/null || echo "Chưa khởi tạo")
-MFA_RECOVERY=$(echo "$CLEAN_JSON" | jq -r '.mfa_recovery_code // "Chưa khởi tạo"' 2>/dev/null || echo "Chưa khởi tạo")
+MFA_SECRET=$(echo "$CLEAN_JSON" | jq -r '.mfa_secret // "Not Initialized"' 2>/dev/null || echo "Not Initialized")
+MFA_RECOVERY=$(echo "$CLEAN_JSON" | jq -r '.mfa_recovery_code // "Not Initialized"' 2>/dev/null || echo "Not Initialized")
 SHARE_1=$(echo "$CLEAN_JSON" | jq -r '.shamir_shares[0] // ""' 2>/dev/null || echo "")
 SHARE_2=$(echo "$CLEAN_JSON" | jq -r '.shamir_shares[1] // ""' 2>/dev/null || echo "")
 SHARE_3=$(echo "$CLEAN_JSON" | jq -r '.shamir_shares[2] // ""' 2>/dev/null || echo "")
 RAW_KEY=$(echo "$CLEAN_JSON" | jq -r '.master_key_raw // ""' 2>/dev/null || echo "")
 
-# Lưu các khóa bí mật vào file bàn giao an toàn
+# Save secret credentials to secure handover file
 cat <<EOF > "${INSTALL_DIR}/CREDENTIALS.txt"
 ==========================================================================
-              THÔNG TIN BÀN GIAO HỆ THỐNG PAM-CPG ENTERPRISE
+              PAM-CPG ENTERPRISE SYSTEM HANDOVER CREDENTIALS
 ==========================================================================
-1. THÔNG TIN TRUY CẬP WEB PORTAL:
-   • Đường dẫn HTTPS : https://${DOMAIN}:${WEB_PORT} (hoặc https://${LOCAL_IP}:${WEB_PORT})
-   • Tài khoản Admin : ${ADMIN_USER}
-   • Mật khẩu Admin  : ${ADMIN_PASS}
+1. WEB PORTAL ACCESS:
+   • HTTPS URL      : https://${DOMAIN}:${WEB_PORT} (or https://${LOCAL_IP}:${WEB_PORT})
+   • Admin Username : ${ADMIN_USER}
+   • Admin Password : ${ADMIN_PASS}
 
-2. THÔNG TIN BẢO MẬT 2 LỚP (MFA / TOTP):
-   • MFA Secret Key (Nhập vào Google Authenticator/Authy): ${MFA_SECRET}
-   • MFA Recovery Code (Dùng để tự khôi phục khi mất OTP) : ${MFA_RECOVERY}
+2. TWO-FACTOR AUTHENTICATION (MFA / TOTP):
+   • MFA Secret Key (Add to Google Authenticator / Authy): ${MFA_SECRET}
+   • MFA Recovery Code (Use to reset MFA if lost)       : ${MFA_RECOVERY}
 
-3. THÔNG TIN CƠ SỞ DỮ LIỆU MARIADB:
+3. MARIADB DATABASE DETAILS:
    • Database Name       : ${DB_NAME}
-   • User Database       : ${DB_USER}
-   • Password Database   : ${DB_PASS}
+   • Database User       : ${DB_USER}
+   • Database Password   : ${DB_PASS}
    • MariaDB Root Pass   : ${MARIADB_ROOT_PASS}
-   • DSN Kết Nối         : ${DB_DSN}
+   • Connection DSN      : ${DB_DSN}
 
-4. 3 MẢNH KHÓA MASTER KEY SHAMIR SECRET SHARING (CẦN 2/3 MẢNH ĐỂ MỞ KHÓA):
-   • Mảnh khóa 1 (Share 1) : ${SHARE_1}
-   • Mảnh khóa 2 (Share 2) : ${SHARE_2}
-   • Mảnh khóa 3 (Share 3) : ${SHARE_3}
+4. 3 SHAMIR MASTER KEY SHARES (REQUIRES 2-OF-3 SHARES TO UNLOCK):
+   • Key Share 1 (Share 1) : ${SHARE_1}
+   • Key Share 2 (Share 2) : ${SHARE_2}
+   • Key Share 3 (Share 3) : ${SHARE_3}
    • Master Key Raw (RAM)  : ${RAW_KEY}
 ==========================================================================
 EOF
 chmod 600 "${INSTALL_DIR}/CREDENTIALS.txt"
 
-# Đăng ký và khởi chạy Systemd Service
+# Register and start Systemd Service
 cat <<EOF > "/etc/systemd/system/${SERVICE_NAME}.service"
 [Unit]
 Description=PAM-CPG Enterprise Privileged Access Management Gateway
@@ -499,48 +499,48 @@ systemctl daemon-reload
 systemctl enable ${SERVICE_NAME} >/dev/null 2>&1
 systemctl restart ${SERVICE_NAME}
 
-# Mở cổng UFW nếu có bật
+# Configure UFW firewall if enabled
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
     ufw allow ${WEB_PORT}/tcp >/dev/null 2>&1 || true
 fi
 
-# Tự động nạp 2 mảnh khóa để mở khóa hệ thống ngay sau khi cài đặt
+# Auto-unlock Shamir key immediately upon initial install
 sleep 2
 curl -k -s -X POST "https://127.0.0.1:${WEB_PORT}/api/system/unlock" \
     -H "Content-Type: application/json" \
     -d "{\"shares\": [\"${SHARE_1}\", \"${SHARE_2}\"]}" >/dev/null 2>&1 || true
 
-# 9. In bảng thông tin bàn giao ra màn hình
+# 9. Print formatted handover table to terminal
 echo -e "\n${GREEN}${BOLD}"
 echo "=========================================================================="
-echo "       🎉 CHÚC MỪNG! PAM-CPG ĐÃ ĐƯỢC CÀI ĐẶT & KHỞI CHẠY THÀNH CÔNG!       "
+echo "       🎉 CONGRATULATIONS! PAM-CPG HAS BEEN INSTALLED & STARTED!          "
 echo "=========================================================================="
 echo -e "${NC}"
 
-echo -e "🌐 ${BOLD}ĐƯỜNG DẪN TRUY CẬP WEB GATEWAY (HTTPS):${NC}"
-echo -e "   • ${CYAN}${BOLD}https://${DOMAIN}:${WEB_PORT}${NC} (hoặc ${CYAN}https://${LOCAL_IP}:${WEB_PORT}${NC})"
+echo -e "🌐 ${BOLD}WEB GATEWAY ACCESS URL (HTTPS):${NC}"
+echo -e "   • ${CYAN}${BOLD}https://${DOMAIN}:${WEB_PORT}${NC} (or ${CYAN}https://${LOCAL_IP}:${WEB_PORT}${NC})"
 echo ""
-echo -e "👤 ${BOLD}TÀI KHOẢN QUẢN TRỊ VIÊN MẶC ĐỊNH:${NC}"
-echo -e "   • Tên đăng nhập : ${BOLD}${ADMIN_USER}${NC}"
-echo -e "   • Mật khẩu      : ${BOLD}${ADMIN_PASS}${NC}"
+echo -e "👤 ${BOLD}DEFAULT ADMINISTRATOR ACCOUNT:${NC}"
+echo -e "   • Username : ${BOLD}${ADMIN_USER}${NC}"
+echo -e "   • Password : ${BOLD}${ADMIN_PASS}${NC}"
 echo ""
-echo -e "🔑 ${BOLD}THÔNG TIN XÁC THỰC 2 LỚP (MFA / TOTP):${NC}"
+echo -e "🔑 ${BOLD}TWO-FACTOR AUTHENTICATION (MFA / TOTP):${NC}"
 echo -e "   • ${YELLOW}MFA Secret Key (TOTP)${NC} : ${BOLD}${MFA_SECRET}${NC}"
-echo -e "     *(Nhập mã Secret Key này vào ứng dụng Google Authenticator hoặc Authy để lấy mã 6 số)*"
+echo -e "     *(Add this Secret Key to Google Authenticator or Authy to get 6-digit OTP codes)*"
 echo -e "   • ${YELLOW}MFA Recovery Code    ${NC} : ${BOLD}${MFA_RECOVERY}${NC}"
-echo -e "     *(Mã khôi phục dùng để tự reset MFA tại trang đăng nhập nếu làm mất điện thoại)*"
+echo -e "     *(Use this code on the login page to recover account if you lose your phone)*"
 echo ""
-echo -e "🗄️  ${BOLD}THÔNG TIN CƠ SỞ DỮ LIỆU MARIADB:${NC}"
+echo -e "🗄️  ${BOLD}MARIADB DATABASE DETAILS:${NC}"
 echo -e "   • MariaDB Root Password : ${BOLD}${MARIADB_ROOT_PASS}${NC}"
-echo -e "   • User Database \`${DB_USER}\`  : ${BOLD}${DB_PASS}${NC}"
+echo -e "   • Database User \`${DB_USER}\`  : ${BOLD}${DB_PASS}${NC}"
 echo -e "   • Database Name         : ${BOLD}${DB_NAME}${NC}"
 echo ""
-echo -e "🛡️  ${BOLD}3 MẢNH KHÓA SHAMIR MASTER KEY (LƯU LẠI ĐỂ MỞ KHÓA KHI REBOOT SERVER):${NC}"
-echo -e "   • ${PURPLE}Mảnh khóa 1 (Share 1)${NC} : ${BOLD}${SHARE_1}${NC}"
-echo -e "   • ${PURPLE}Mảnh khóa 2 (Share 2)${NC} : ${BOLD}${SHARE_2}${NC}"
-echo -e "   • ${PURPLE}Mảnh khóa 3 (Share 3)${NC} : ${BOLD}${SHARE_3}${NC}"
-echo -e "   *(Hệ thống yêu cầu nhập tối thiểu 2 trong 3 mảnh khóa trên để mở khóa khi khởi động)*"
+echo -e "🛡️  ${BOLD}3 SHAMIR MASTER KEY SHARES (SAVE THESE TO UNLOCK UPON SERVER REBOOT):${NC}"
+echo -e "   • ${PURPLE}Key Share 1 (Share 1)${NC} : ${BOLD}${SHARE_1}${NC}"
+echo -e "   • ${PURPLE}Key Share 2 (Share 2)${NC} : ${BOLD}${SHARE_2}${NC}"
+echo -e "   • ${PURPLE}Key Share 3 (Share 3)${NC} : ${BOLD}${SHARE_3}${NC}"
+echo -e "   *(System requires at least 2 of the 3 shares to unlock on startup)*"
 echo ""
-echo -e "📁 ${BOLD}FILE LƯU TOÀN BỘ THÔNG TIN BÀN GIAO BẢO MẬT:${NC}"
+echo -e "📁 ${BOLD}SECURE CREDENTIALS HANDOVER FILE:${NC}"
 echo -e "   • File: ${BOLD}${INSTALL_DIR}/CREDENTIALS.txt${NC}"
 echo "=========================================================================="
