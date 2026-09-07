@@ -1,0 +1,8 @@
+{
+  "version": "1.0.1",
+  "release_date": "2026-09-07",
+  "changelog_vi": "Cập nhật tài liệu Hướng dẫn sử dụng song ngữ EN/VI toàn diện, dọn dẹp tối ưu dung lượng ảnh, và bổ sung tính năng tự động kiểm tra phiên bản.",
+  "changelog_en": "Comprehensive bilingual (EN/VI) User Manual in Help tab, cleaned up unused legacy images, and added automated version check against public repository.",
+  "download_url": "https://github.com/cuongnguyen955/pam-cpg",
+  "is_critical": false
+}
