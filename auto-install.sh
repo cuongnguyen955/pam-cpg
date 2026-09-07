@@ -394,6 +394,21 @@ fi
 
 chmod +x "${INSTALL_DIR}/bin/pam-cpg"
 
+# Deploy update and helper scripts into installation directory
+if [ -f "./update.sh" ]; then
+    cp -f "./update.sh" "${INSTALL_DIR}/update.sh"
+else
+    curl -sSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/update.sh" -o "${INSTALL_DIR}/update.sh" 2>/dev/null || true
+fi
+chmod +x "${INSTALL_DIR}/update.sh" 2>/dev/null || true
+
+if [ -f "./uninstall.sh" ]; then
+    cp -f "./uninstall.sh" "${INSTALL_DIR}/uninstall.sh"
+else
+    curl -sSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/uninstall.sh" -o "${INSTALL_DIR}/uninstall.sh" 2>/dev/null || true
+fi
+chmod +x "${INSTALL_DIR}/uninstall.sh" 2>/dev/null || true
+
 # 7. Generate 10-year SSL Certificate (3650 days)
 echo -e "\n${CYAN}[*] Step 6/7: Generating 10-Year SSL Certificate (3650 days)...${NC}"
 CERT_FILE="${INSTALL_DIR}/certs/server.crt"

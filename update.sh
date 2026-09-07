@@ -89,13 +89,24 @@ cp -f "${TEMP_UPDATE_DIR}/pam-cpg" "${INSTALL_DIR}/bin/pam-cpg"
 chmod +x "${INSTALL_DIR}/bin/pam-cpg"
 echo -e "      ${GREEN}✔ Successfully deployed the new binary executable.${NC}"
 
-# Sync helper scripts if present
+# Sync helper scripts if present, otherwise fetch if missing
+if [ -f "./update.sh" ]; then
+    cp -f "./update.sh" "${INSTALL_DIR}/update.sh" 2>/dev/null || true
+elif [ ! -f "${INSTALL_DIR}/update.sh" ]; then
+    curl -sSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/update.sh" -o "${INSTALL_DIR}/update.sh" 2>/dev/null || true
+fi
+chmod +x "${INSTALL_DIR}/update.sh" 2>/dev/null || true
+
 if [ -f "./auto-install.sh" ]; then
     cp -f "./auto-install.sh" "${INSTALL_DIR}/auto-install.sh" 2>/dev/null || true
 fi
+
 if [ -f "./uninstall.sh" ]; then
     cp -f "./uninstall.sh" "${INSTALL_DIR}/uninstall.sh" 2>/dev/null || true
+elif [ ! -f "${INSTALL_DIR}/uninstall.sh" ]; then
+    curl -sSL "https://raw.githubusercontent.com/${GITHUB_REPO}/main/uninstall.sh" -o "${INSTALL_DIR}/uninstall.sh" 2>/dev/null || true
 fi
+chmod +x "${INSTALL_DIR}/uninstall.sh" 2>/dev/null || true
 
 # 6. Restart systemd service
 echo -e "\n${CYAN}[4/4] Restarting ${SERVICE_NAME}.service...${NC}"
