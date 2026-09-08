@@ -1,8 +1,8 @@
 {
-  "version": "1.0.1",
-  "release_date": "2026-09-07",
-  "changelog_vi": "Cập nhật tài liệu Hướng dẫn sử dụng song ngữ EN/VI toàn diện, dọn dẹp tối ưu dung lượng ảnh, và bổ sung tính năng tự động kiểm tra phiên bản.",
-  "changelog_en": "Comprehensive bilingual (EN/VI) User Manual in Help tab, cleaned up unused legacy images, and added automated version check against public repository.",
+  "version": "1.0.2",
+  "release_date": "2026-09-08",
+  "changelog_vi": "Tối ưu hóa và sửa lỗi kết nối RDP HTML5 tương thích toàn diện với các phiên bản Windows Server cũ (2012) và mới (2019), sửa lỗi xoay ngược con trỏ chuột và kích hoạt lại phiên làm việc mượt mà.",
+  "changelog_en": "Optimized and fixed HTML5 RDP compatibility for legacy (Windows Server 2012) and modern (Windows Server 2019) systems, fixed inverted cursor mask rendering, and improved session reactivation flow.",
   "download_url": "https://github.com/cuongnguyen955/pam-cpg",
   "is_critical": false
 }

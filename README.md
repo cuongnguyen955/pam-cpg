@@ -1,7 +1,7 @@
 # PAM-CPG: Centralized Enterprise Privileged Access Management Gateway
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Version-1.0.2-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Go-1.25.3-00ADD8.svg" alt="Go Version">
   <img src="https://img.shields.io/badge/Svelte-Vite-FF3E00.svg" alt="Frontend">
   <img src="https://img.shields.io/badge/MariaDB-10.6+-003545.svg" alt="Database">
