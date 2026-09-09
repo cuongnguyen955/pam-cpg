@@ -196,10 +196,13 @@ done
 
 read_input "2. Domain name / Hostname (optional, e.g. pam.company.com) [Default: ${LOCAL_IP}]: " "${LOCAL_IP}" DOMAIN
 
-# Detect existing MariaDB / MySQL on host
-HAS_EXISTING_DB=false
-if is_local_db_running || is_local_db_installed; then
-    HAS_EXISTING_DB=true
+# Detect if active MariaDB / MySQL service is currently running on the host
+HAS_ACTIVE_DB=false
+if is_local_db_running; then
+    # Verify if port 3306 or socket is actively responding
+    if (timeout 1 bash -c "echo > /dev/tcp/127.0.0.1/3306") >/dev/null 2>&1 || [ -S /run/mysqld/mysqld.sock ] || [ -S /var/run/mysqld/mysqld.sock ]; then
+        HAS_ACTIVE_DB=true
+    fi
 fi
 
 AUTO_PROVISION_DB=false
@@ -207,8 +210,8 @@ INSTALL_DB_PACKAGE=false
 ADMIN_DB_USER="root"
 ADMIN_DB_PASS=""
 
-if [ "$HAS_EXISTING_DB" = true ]; then
-    echo -e "\n    ${YELLOW}⚡ Notice: Existing MariaDB / MySQL service detected on this server.${NC}"
+if [ "$HAS_ACTIVE_DB" = true ]; then
+    echo -e "\n    ${YELLOW}⚡ Notice: Active MariaDB / MySQL service detected on this server.${NC}"
     
     # Ensure CLI client is available for testing
     if ! command -v mariadb >/dev/null 2>&1 && ! command -v mysql >/dev/null 2>&1; then
@@ -219,19 +222,6 @@ if [ "$HAS_EXISTING_DB" = true ]; then
         elif [ "$OS_NAME" = "centos" ] || [ "$OS_NAME" = "rhel" ] || [ "$OS_NAME" = "rocky" ] || [ "$OS_NAME" = "almalinux" ]; then
             yum install -y mariadb >/dev/null 2>&1 || true
         fi
-    fi
-
-    # Auto-start MariaDB/MySQL service if installed but currently inactive/stopped
-    if is_local_db_installed && ! is_local_db_running; then
-        echo -e "    -> Starting local MariaDB / MySQL service..."
-        systemctl enable mariadb >/dev/null 2>&1 || systemctl enable mysql >/dev/null 2>&1 || true
-        systemctl start mariadb >/dev/null 2>&1 || systemctl start mysql >/dev/null 2>&1 || true
-        for i in {1..5}; do
-            if is_local_db_running || [ -S /run/mysqld/mysqld.sock ] || [ -S /var/run/mysqld/mysqld.sock ]; then
-                break
-            fi
-            sleep 1
-        done
     fi
 
     echo -e "    Please select database setup method for PAM-CPG:"
@@ -248,7 +238,7 @@ if [ "$HAS_EXISTING_DB" = true ]; then
             echo -e "    ${GREEN}✔ Verified MariaDB Admin (root) permissions via unix socket (No password required).${NC}"
         else
             while true; do
-                read_input "    • Enter MariaDB Admin (root) password (leave blank to retry socket): " "" ADMIN_DB_PASS
+                read_input "    • Enter MariaDB Admin (root) password: " "" ADMIN_DB_PASS
                 
                 local DB_CHECK_ERR=""
                 if [ -z "$ADMIN_DB_PASS" ]; then
@@ -278,10 +268,10 @@ if [ "$HAS_EXISTING_DB" = true ]; then
         fi
 
         if [ "$DB_CHOICE" = "1" ]; then
-            read_input "    • Database Name to create [Default: ${DEFAULT_DB_NAME}]: " "${DEFAULT_DB_NAME}" DB_NAME
-            read_input "    • Database Username to create [Default: ${DEFAULT_DB_USER}]: " "${DEFAULT_DB_USER}" DB_USER
+            DB_NAME="${DEFAULT_DB_NAME}"
+            DB_USER="${DEFAULT_DB_USER}"
             DB_PASS="$(generate_random_password)"
-            MARIADB_ROOT_PASS="${ADMIN_DB_PASS}"
+            MARIADB_ROOT_PASS="${ADMIN_DB_PASS:-[Unix Socket / Unchanged]}"
             DB_HOST="127.0.0.1"
             DB_PORT="3306"
             AUTO_PROVISION_DB=true
@@ -320,28 +310,19 @@ if [ "$HAS_EXISTING_DB" = true ]; then
         INSTALL_DB_PACKAGE=false
     fi
 else
-    echo -e "\n    ${CYAN}⚡ Notice: No local MariaDB / MySQL service found on this server.${NC}"
-    read_input "3. Automatically install & configure local MariaDB Server? (Y/n) [Default: Y]: " "Y" INSTALL_LOCAL_DB
-
-    if [[ "$INSTALL_LOCAL_DB" =~ ^[Yy]$ ]]; then
-        INSTALL_DB_PACKAGE=true
-        AUTO_PROVISION_DB=true
-        DB_NAME="${DEFAULT_DB_NAME}"
-        DB_USER="${DEFAULT_DB_USER}"
-        DB_PASS="$(generate_random_password)"
-        MARIADB_ROOT_PASS="$(generate_random_password)"
-        DB_HOST="127.0.0.1"
-        DB_PORT="3306"
-    else
-        INSTALL_DB_PACKAGE=false
-        AUTO_PROVISION_DB=false
-        read_input "    • External Database Host [Default: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
-        read_input "    • External Database Port [Default: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
-        read_input "    • External Database Name [Default: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
-        read_input "    • External Database Username [Default: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
-        read_input "    • External Database Password: " "" DB_PASS
-        MARIADB_ROOT_PASS="[N/A - External Database]"
-    fi
+    # CLEAN / FRESH SERVER: Zero questions asked. Everything automated!
+    echo -e "\n    ${GREEN}✔ No active MySQL/MariaDB service detected.${NC}"
+    echo -e "    -> Installer will automatically install, configure, and secure local MariaDB Server."
+    INSTALL_DB_PACKAGE=true
+    AUTO_PROVISION_DB=true
+    ADMIN_DB_USER="root"
+    ADMIN_DB_PASS=""
+    DB_NAME="${DEFAULT_DB_NAME}"
+    DB_USER="${DEFAULT_DB_USER}"
+    DB_PASS="$(generate_random_password)"
+    MARIADB_ROOT_PASS="$(generate_random_password)"
+    DB_HOST="127.0.0.1"
+    DB_PORT="3306"
 fi
 
 DB_DSN="${DB_USER}:${DB_PASS}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?charset=utf8mb4&parseTime=True&loc=Local"
@@ -430,6 +411,15 @@ GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'127.0.0.1';
 GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';
 FLUSH PRIVILEGES;
 EOF
+
+    # Set root password for fresh local MariaDB install
+    if [ "$INSTALL_DB_PACKAGE" = true ] && [ -n "$MARIADB_ROOT_PASS" ]; then
+        $MYSQL_CLI $MYSQL_AUTH_FLAGS <<EOF >/dev/null 2>&1 || true
+ALTER USER 'root'@'localhost' IDENTIFIED BY '${MARIADB_ROOT_PASS}';
+FLUSH PRIVILEGES;
+EOF
+    fi
+
     echo -e "    ${GREEN}✔ Database \`${DB_NAME}\` initialized and secured successfully!${NC}"
 else
     echo -e "\n${CYAN}[*] Step 4/7: Using pre-configured Database \`${DB_NAME}\`...${NC}"
@@ -633,9 +623,11 @@ echo -e "   • ${YELLOW}MFA Recovery Code    ${NC} : ${BOLD}${MFA_RECOVERY}${NC
 echo -e "     *(Use this code on the login page to recover account if you lose your phone)*"
 echo ""
 echo -e "🗄️  ${BOLD}MARIADB DATABASE DETAILS:${NC}"
-echo -e "   • MariaDB Root Password : ${BOLD}${MARIADB_ROOT_PASS}${NC}"
-echo -e "   • Database User \`${DB_USER}\`  : ${BOLD}${DB_PASS}${NC}"
+echo -e "   • Database Host & Port  : ${BOLD}${DB_HOST}:${DB_PORT}${NC}"
 echo -e "   • Database Name         : ${BOLD}${DB_NAME}${NC}"
+echo -e "   • Database User         : ${BOLD}${DB_USER}${NC}"
+echo -e "   • Database Password     : ${BOLD}${DB_PASS}${NC}"
+echo -e "   • MariaDB Root Password : ${BOLD}${MARIADB_ROOT_PASS}${NC}"
 echo ""
 echo -e "🛡️  ${BOLD}3 SHAMIR MASTER KEY SHARES (SAVE THESE TO UNLOCK UPON SERVER REBOOT):${NC}"
 echo -e "   • ${PURPLE}Key Share 1 (Share 1)${NC} : ${BOLD}${SHARE_1}${NC}"
