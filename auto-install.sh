@@ -209,6 +209,31 @@ ADMIN_DB_PASS=""
 
 if [ "$HAS_EXISTING_DB" = true ]; then
     echo -e "\n    ${YELLOW}⚡ Notice: Existing MariaDB / MySQL service detected on this server.${NC}"
+    
+    # Ensure CLI client is available for testing
+    if ! command -v mariadb >/dev/null 2>&1 && ! command -v mysql >/dev/null 2>&1; then
+        echo -e "    -> Ensuring database client tools are installed..."
+        if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
+            apt-get update -qq >/dev/null 2>&1 || true
+            apt-get install -y -qq mariadb-client >/dev/null 2>&1 || true
+        elif [ "$OS_NAME" = "centos" ] || [ "$OS_NAME" = "rhel" ] || [ "$OS_NAME" = "rocky" ] || [ "$OS_NAME" = "almalinux" ]; then
+            yum install -y mariadb >/dev/null 2>&1 || true
+        fi
+    fi
+
+    # Auto-start MariaDB/MySQL service if installed but currently inactive/stopped
+    if is_local_db_installed && ! is_local_db_running; then
+        echo -e "    -> Starting local MariaDB / MySQL service..."
+        systemctl enable mariadb >/dev/null 2>&1 || systemctl enable mysql >/dev/null 2>&1 || true
+        systemctl start mariadb >/dev/null 2>&1 || systemctl start mysql >/dev/null 2>&1 || true
+        for i in {1..5}; do
+            if is_local_db_running || [ -S /run/mysqld/mysqld.sock ] || [ -S /var/run/mysqld/mysqld.sock ]; then
+                break
+            fi
+            sleep 1
+        done
+    fi
+
     echo -e "    Please select database setup method for PAM-CPG:"
     echo -e "      [1] Automatically create Database \`${DEFAULT_DB_NAME}\` & dedicated User for PAM-CPG (Recommended)."
     echo -e "      [2] Use an existing pre-created Database & User for PAM-CPG."
@@ -218,35 +243,58 @@ if [ "$HAS_EXISTING_DB" = true ]; then
         ADMIN_DB_USER="root"
         ADMIN_DB_PASS=""
 
-        # Test root socket auth
+        # Test root socket auth first
         if mariadb -u root -e "SELECT 1;" >/dev/null 2>&1 || mysql -u root -e "SELECT 1;" >/dev/null 2>&1; then
-            echo -e "    ${GREEN}✔ Verified MariaDB Admin (root) permissions via unix socket.${NC}"
+            echo -e "    ${GREEN}✔ Verified MariaDB Admin (root) permissions via unix socket (No password required).${NC}"
         else
             while true; do
-                read_input "    • Enter MariaDB Admin (root) password: " "" ADMIN_DB_PASS
-                if mariadb -u root -p"${ADMIN_DB_PASS}" -e "SELECT 1;" >/dev/null 2>&1 || mysql -u root -p"${ADMIN_DB_PASS}" -e "SELECT 1;" >/dev/null 2>&1; then
-                    echo -e "      ${GREEN}✔ Root password verified successfully!${NC}"
-                    break
+                read_input "    • Enter MariaDB Admin (root) password (leave blank to retry socket): " "" ADMIN_DB_PASS
+                
+                local DB_CHECK_ERR=""
+                if [ -z "$ADMIN_DB_PASS" ]; then
+                    if mariadb -u root -e "SELECT 1;" >/dev/null 2>&1 || mysql -u root -e "SELECT 1;" >/dev/null 2>&1; then
+                        echo -e "      ${GREEN}✔ Root permissions verified successfully via unix socket!${NC}"
+                        break
+                    else
+                        DB_CHECK_ERR=$(mariadb -u root -e "SELECT 1;" 2>&1 || mysql -u root -e "SELECT 1;" 2>&1 || true)
+                    fi
                 else
-                    echo -e "      ${RED}[!] Invalid root password or cannot connect. Please try again!${NC}"
+                    if mariadb -u root -p"${ADMIN_DB_PASS}" -e "SELECT 1;" >/dev/null 2>&1 || mysql -u root -p"${ADMIN_DB_PASS}" -e "SELECT 1;" >/dev/null 2>&1; then
+                        echo -e "      ${GREEN}✔ Root password verified successfully!${NC}"
+                        break
+                    else
+                        DB_CHECK_ERR=$(mariadb -u root -p"${ADMIN_DB_PASS}" -e "SELECT 1;" 2>&1 || mysql -u root -p"${ADMIN_DB_PASS}" -e "SELECT 1;" 2>&1 || true)
+                    fi
+                fi
+
+                echo -e "      ${RED}[!] Cannot connect to MariaDB:${NC} ${DB_CHECK_ERR}"
+                read_input "      -> Would you like to retry? (Y/n) [Default: Y]: " "Y" RETRY_ROOT_PASS
+                if [[ ! "$RETRY_ROOT_PASS" =~ ^[Yy]$ ]]; then
+                    echo -e "      ${YELLOW}-> Switching to option [2]: Use pre-created Database & User.${NC}"
+                    DB_CHOICE="2"
+                    break
                 fi
             done
         fi
 
-        read_input "    • Database Name to create [Default: ${DEFAULT_DB_NAME}]: " "${DEFAULT_DB_NAME}" DB_NAME
-        read_input "    • Database Username to create [Default: ${DEFAULT_DB_USER}]: " "${DEFAULT_DB_USER}" DB_USER
-        DB_PASS="$(generate_random_password)"
-        MARIADB_ROOT_PASS="${ADMIN_DB_PASS}"
-        DB_HOST="127.0.0.1"
-        DB_PORT="3306"
-        AUTO_PROVISION_DB=true
-        INSTALL_DB_PACKAGE=false
-    else
+        if [ "$DB_CHOICE" = "1" ]; then
+            read_input "    • Database Name to create [Default: ${DEFAULT_DB_NAME}]: " "${DEFAULT_DB_NAME}" DB_NAME
+            read_input "    • Database Username to create [Default: ${DEFAULT_DB_USER}]: " "${DEFAULT_DB_USER}" DB_USER
+            DB_PASS="$(generate_random_password)"
+            MARIADB_ROOT_PASS="${ADMIN_DB_PASS}"
+            DB_HOST="127.0.0.1"
+            DB_PORT="3306"
+            AUTO_PROVISION_DB=true
+            INSTALL_DB_PACKAGE=false
+        fi
+    fi
+
+    if [ "$DB_CHOICE" = "2" ]; then
         while true; do
             read_input "    • Database Host [Default: 127.0.0.1]: " "$DEFAULT_DB_HOST" DB_HOST
             read_input "    • Database Port [Default: 3306]: " "$DEFAULT_DB_PORT" DB_PORT
-            read_input "    • Pre-created Database Name [Default: ${DEFAULT_DB_NAME}]: " "$DEFAULT_DB_NAME" DB_NAME
-            read_input "    • Database Username [Default: ${DEFAULT_DB_USER}]: " "$DEFAULT_DB_USER" DB_USER
+            read_input "    • Pre-created Database Name [Default: ${DEFAULT_DB_NAME}]: " "${DEFAULT_DB_NAME}" DB_NAME
+            read_input "    • Database Username [Default: ${DEFAULT_DB_USER}]: " "${DEFAULT_DB_USER}" DB_USER
             read_input "    • Database Password: " "" DB_PASS
 
             # Test connection to provided database
@@ -258,7 +306,9 @@ if [ "$HAS_EXISTING_DB" = true ]; then
                 echo -e "      ${GREEN}✔ Connected to Database \`${DB_NAME}\` successfully!${NC}"
                 break
             else
-                echo -e "      ${YELLOW}⚠ Cannot connect to Database \`${DB_NAME}\` with provided credentials.${NC}"
+                local USER_DB_ERR=""
+                USER_DB_ERR=$(mariadb $MYSQL_AUTH_TEST -e "USE \`${DB_NAME}\`;" 2>&1 || mysql $MYSQL_AUTH_TEST -e "USE \`${DB_NAME}\`;" 2>&1 || true)
+                echo -e "      ${YELLOW}⚠ Cannot connect to Database \`${DB_NAME}\`: ${USER_DB_ERR}${NC}"
                 read_input "      -> Would you like to retry? (Y/n) [Default: Y]: " "Y" RETRY_DB
                 if [[ ! "$RETRY_DB" =~ ^[Yy]$ ]]; then
                     break
