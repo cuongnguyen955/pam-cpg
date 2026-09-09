@@ -301,12 +301,26 @@ echo -e "  • Web Gateway Port : ${BOLD}${WEB_PORT}${NC}"
 echo -e "  • Domain / Host IP : ${BOLD}${DOMAIN}${NC}"
 echo -e "  • Database Target  : ${BOLD}${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}${NC}"
 
-# 4. Install dependencies (FFmpeg, MariaDB, OpenSSL, curl, jq)
-echo -e "\n${CYAN}[*] Step 3/7: Installing system dependencies (FFmpeg, OpenSSL, MariaDB, JQ)...${NC}"
+# 4. Install dependencies (FFmpeg, MariaDB, OpenSSL, curl, jq, IPRoute2)
+echo -e "\n${CYAN}[*] Step 3/7: Installing system dependencies (FFmpeg, OpenSSL, MariaDB, JQ, IPRoute2)...${NC}"
+
+# If UFW is active on strict deny-outgoing policy, allow essential outbound traffic for installation first
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+    ufw allow out 53 >/dev/null 2>&1 || true
+    ufw allow out 123/udp >/dev/null 2>&1 || true
+    ufw allow out 80/tcp >/dev/null 2>&1 || true
+    ufw allow out 443/tcp >/dev/null 2>&1 || true
+fi
+
 if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
     export DEBIAN_FRONTEND=noninteractive
+    # Ensure universe repository is enabled on Ubuntu 22.04 / 24.04 / 26.04
+    if [ "$OS_NAME" = "ubuntu" ]; then
+        apt-get install -y -qq software-properties-common >/dev/null 2>&1 || true
+        add-apt-repository -y universe >/dev/null 2>&1 || true
+    fi
     apt-get update -qq
-    apt-get install -y -qq ffmpeg ca-certificates curl openssl tzdata jq >/dev/null 2>&1
+    apt-get install -y -qq ffmpeg ca-certificates curl openssl tzdata jq iproute2 >/dev/null 2>&1
 
     if [ "$INSTALL_DB_PACKAGE" = true ] || ( [ "$AUTO_PROVISION_DB" = true ] && ! is_local_db_installed ); then
         echo -e "    -> Installing MariaDB Server..."
@@ -318,7 +332,7 @@ if [ "$OS_NAME" = "ubuntu" ] || [ "$OS_NAME" = "debian" ]; then
     fi
 elif [ "$OS_NAME" = "centos" ] || [ "$OS_NAME" = "rhel" ] || [ "$OS_NAME" = "rocky" ] || [ "$OS_NAME" = "almalinux" ]; then
     yum install -y epel-release >/dev/null 2>&1 || true
-    yum install -y ffmpeg ca-certificates curl openssl tzdata jq >/dev/null 2>&1
+    yum install -y ffmpeg ca-certificates curl openssl tzdata jq iproute >/dev/null 2>&1
     if [ "$INSTALL_DB_PACKAGE" = true ] || ( [ "$AUTO_PROVISION_DB" = true ] && ! is_local_db_installed ); then
         yum install -y mariadb-server mariadb >/dev/null 2>&1
         systemctl enable mariadb >/dev/null 2>&1
@@ -514,9 +528,32 @@ systemctl daemon-reload
 systemctl enable ${SERVICE_NAME} >/dev/null 2>&1
 systemctl restart ${SERVICE_NAME}
 
-# Configure UFW firewall if enabled
+# Configure UFW firewall if enabled (supporting strict IN/OUT deny policies)
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
-    ufw allow ${WEB_PORT}/tcp >/dev/null 2>&1 || true
+    echo -e "\n${CYAN}[*] Configuring UFW Firewall rules (IN & OUT for strict security policies)...${NC}"
+    
+    # 1. INCOMING RULES (Clients & Admins to PAM-CPG)
+    ufw allow ${WEB_PORT}/tcp comment "PAM-CPG Web Portal & API (HTTPS/WSS)" >/dev/null 2>&1 || true
+    ufw allow 2121/tcp comment "PAM-CPG RDP FTP Sharing Control" >/dev/null 2>&1 || true
+    ufw allow 30000:30100/tcp comment "PAM-CPG RDP FTP Passive Data Ports" >/dev/null 2>&1 || true
+    ufw allow 22/tcp comment "SSH Server Management" >/dev/null 2>&1 || true
+
+    # 2. OUTGOING RULES (PAM-CPG to Target Devices & Infrastructure)
+    ufw allow out 53 comment "DNS Resolution (UDP/TCP)" >/dev/null 2>&1 || true
+    ufw allow out 123/udp comment "NTP Time Synchronization" >/dev/null 2>&1 || true
+    ufw allow out 80,443/tcp comment "HTTP/HTTPS (Apt, GitHub, SSO Azure/Google, Web Proxy)" >/dev/null 2>&1 || true
+    ufw allow out 22/tcp comment "PAM Target SSH/SFTP" >/dev/null 2>&1 || true
+    ufw allow out 3389/tcp comment "PAM Target Windows RDP" >/dev/null 2>&1 || true
+    ufw allow out 23/tcp comment "PAM Target Telnet" >/dev/null 2>&1 || true
+    ufw allow out 5900:5910/tcp comment "PAM Target VNC" >/dev/null 2>&1 || true
+    ufw allow out 20,21/tcp comment "PAM Target FTP" >/dev/null 2>&1 || true
+    ufw allow out 389,636/tcp comment "PAM Target LDAP/LDAPS (Active Directory)" >/dev/null 2>&1 || true
+    ufw allow out 25,465,587/tcp comment "PAM Outbound SMTP/SMTPS Mail Alerts" >/dev/null 2>&1 || true
+    if [ "$DB_HOST" != "127.0.0.1" ] && [ "$DB_HOST" != "localhost" ]; then
+        ufw allow out ${DB_PORT}/tcp comment "PAM External MariaDB/MySQL Database" >/dev/null 2>&1 || true
+    fi
+
+    echo -e "    ${GREEN}✔ Configured UFW rules (IN: ${WEB_PORT}, 2121, 30000-30100, 22 | OUT: DNS, NTP, HTTP/S, SSH, RDP, Telnet, VNC, FTP, LDAP, SMTP).${NC}"
 fi
 
 # Auto-unlock Shamir key immediately upon initial install

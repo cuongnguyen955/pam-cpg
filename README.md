@@ -107,7 +107,38 @@ systemctl stop pam-cpg
 
 ---
 
-## 📁 5. CẤU TRÚC THƯ MỤC HỆ THỐNG (`/opt/PAM-CPG/`)
+## 🛡️ 5. YÊU CẦU CỔNG MẠNG & TƯỜNG LỬA (FIREWALL & NETWORK PORTS)
+
+Đối với các môi trường doanh nghiệp có chính sách Tường lửa kiểm soát nghiêm ngặt (**Default: deny incoming, deny outgoing**), Quản trị viên cần đảm bảo mở các cổng mạng sau:
+
+### 📥 A. Các Cổng Chiều Vào (INBOUND - Người dùng/Admin truy cập vào PAM):
+| Port | Giao thức | Mô tả mục đích |
+| :--- | :--- | :--- |
+| **`9000/tcp`** (hoặc `$PORT`) | TCP | **PAM Web Portal & REST API / WebSocket** (HTTPS/WSS). |
+| **`2121/tcp`** | TCP | **FTP Server Control** (Kéo thả truyền file trong phiên Windows RDP). |
+| **`30000:30100/tcp`** | TCP | **FTP Passive Data Range** (Kênh truyền dữ liệu file RDP). |
+| **`22/tcp`** | TCP | SSH Server Management (Quản trị máy chủ PAM). |
+
+### 📤 B. Các Cổng Chiều Ra (OUTBOUND - PAM kết nối tới Thiết bị đích & Hạ tầng):
+| Port | Giao thức | Mô tả mục đích |
+| :--- | :--- | :--- |
+| **`53`** | UDP / TCP | **DNS Resolution** (Phân giải tên miền/hostname máy chủ đích). |
+| **`123`** | UDP | **NTP Time Sync** (Đồng bộ thời gian chuẩn cho mã OTP MFA và SSL/TLS). |
+| **`80, 443`** | TCP | **HTTP / HTTPS Outbound** (Apt updates, GitHub releases, SSO Azure AD/Google, Web Reverse Proxy). |
+| **`22`** | TCP | **Target SSH / SFTP** (Quản trị máy chủ Linux, thiết bị mạng Cisco/Juniper/Switch). |
+| **`3389`** | TCP | **Target RDP** (Quản trị máy chủ Windows Server / Desktop). |
+| **`23`** | TCP | **Target Telnet** (Quản trị thiết bị mạng legacy). |
+| **`5900:5910`** | TCP | **Target VNC** (Quản trị máy chủ ảo hóa, Linux GUI). |
+| **`20, 21`** | TCP | **Target FTP** (Quản trị máy chủ FTP lưu trữ). |
+| **`389, 636`** | TCP | **Target LDAP / LDAPS** (Xác thực Active Directory / OpenLDAP). |
+| **`25, 465, 587`**| TCP | **Outbound SMTP / SMTPS** (Gửi email cảnh báo, mã OTP khôi phục). |
+| **`3306`** | TCP | **MariaDB / MySQL** (Nếu sử dụng External Database Server ngoài localhost). |
+
+> 💡 *Script `auto-install.sh` đã được tích hợp sẵn tính năng tự động nhận diện và thiết lập toàn bộ các rule IN/OUT trên cho `ufw` khi cài đặt.*
+
+---
+
+## 📁 6. CẤU TRÚC THƯ MỤC HỆ THỐNG (`/opt/PAM-CPG/`)
 
 ```text
 /opt/PAM-CPG/

@@ -150,7 +150,16 @@ if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
     fi
     ufw delete allow 9000/tcp >/dev/null 2>&1 || true
     ufw delete allow 8083/tcp >/dev/null 2>&1 || true
-    echo -e "      ${GREEN}✔ Revoked open firewall port rules.${NC}"
+    ufw delete allow 2121/tcp >/dev/null 2>&1 || true
+    ufw delete allow 30000:30100/tcp >/dev/null 2>&1 || true
+    
+    # Clean up specific outbound rules if present
+    ufw delete allow out 3389/tcp >/dev/null 2>&1 || true
+    ufw delete allow out 23/tcp >/dev/null 2>&1 || true
+    ufw delete allow out 5900:5910/tcp >/dev/null 2>&1 || true
+    ufw delete allow out 389/tcp >/dev/null 2>&1 || true
+    ufw delete allow out 636/tcp >/dev/null 2>&1 || true
+    echo -e "      ${GREEN}✔ Revoked and cleaned up PAM-CPG firewall port rules.${NC}"
 else
     echo -e "      ${GREEN}✔ UFW firewall inactive or no rules to delete.${NC}"
 fi
